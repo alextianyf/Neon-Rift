@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>霓虹裂隙 Neon Rift</title>
+</head>
+<body>
+<div id="cross" class="hidden"></div>
+<div id="vignette"></div>
+<div id="fade"></div>
+
+<div id="hud" class="hidden">
+  <div id="tl">
+    <div class="label">HULL</div>
+    <div class="bar"><div id="hpFill"></div></div>
+    <div id="hpText"></div>
+    <div class="label">DASH</div>
+    <div class="bar small"><div id="dashFill"></div></div>
+  </div>
+  <div id="tr">
+    <div>房间 <b id="roomN">1</b></div>
+    <div>分数 <b id="score">0</b></div>
+    <div class="dim">最佳纪录：<span id="best">-</span></div>
+  </div>
+  <div id="bossBar" class="hidden"><div class="name">核心守卫者</div><div class="bar"><div id="bossFill"></div></div></div>
+  <div id="weapons"></div>
+  <div id="buffs"></div>
+  <div id="toast"></div>
+</div>
+
+<div id="titleScreen" class="overlay">
+  <h1>NEON RIFT</h1>
+  <div class="sub">霓虹裂隙 · 俯视角 Roguelite 射击 Demo</div>
+  <div class="controls">
+    <kbd>WASD</kbd><span>移动</span>
+    <kbd>鼠标</kbd><span>瞄准 / 左键射击</span>
+    <kbd>空格 / 右键</kbd><span>冲刺（无敌帧）</span>
+    <kbd>1 2 3 / Q / 滚轮</kbd><span>切换武器</span>
+    <kbd>Esc / P</kbd><span>暂停</span>
+  </div>
+  <button class="go" id="startBtn">开 始</button>
+</div>
+
+<div id="upgradeScreen" class="overlay hidden">
+  <h2>选择一项强化</h2>
+  <div id="cards"></div>
+</div>
+
+<div id="pauseScreen" class="overlay hidden">
+  <h2>已暂停</h2>
+  <button class="go" id="resumeBtn">继 续</button>
+</div>
+
+<div id="deadScreen" class="overlay hidden">
+  <h2 style="color:#ff4d6d">机体损毁</h2>
+  <div class="stats" id="deadStats"></div>
+  <button class="go" id="restartBtn">再来一局</button>
+</div>
+
+<script type="module" src="/src/main.ts"></script>
+</body>
+</html>
