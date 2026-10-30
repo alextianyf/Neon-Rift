@@ -44,6 +44,8 @@ export const UPGRADES: UpgradeDef[] = [
   { id: 'burn', rarity: 'rare', name: '燃烧弹头', desc: '命中时 15% 几率点燃敌人', apply: p => { p.burnChance += 0.15; } },
   { id: 'chill', rarity: 'rare', name: '寒霜涂层', desc: '命中时 15% 几率冻结减速', apply: p => { p.frostChance += 0.15; } },
   { id: 'shock', rarity: 'rare', name: '电弧线圈', desc: '命中时 12% 几率触发闪电链', apply: p => { p.shockChance += 0.12; } },
+  { id: 'thermal', rarity: 'rare', name: '热冲击协议', desc: '燃烧 + 冰冻触发的热冲击伤害 ×2、范围 +30%', max: 2, apply: p => { p.synergyMul *= 2; p.synergyRadius *= 1.3; } },
+  { id: 'conduct', rarity: 'rare', name: '超导链路', desc: '闪电链 +2 目标，并把燃烧 / 冰冻传给被连锁的敌人', max: 1, apply: p => { p.chainExtra += 2; p.chainSpread = true; } },
   { id: 'blast', rarity: 'rare', name: '高爆装药', desc: '爆炸范围 +30%，爆炸伤害 +20%', apply: p => { p.blastMul *= 1.3; p.blastDmgMul *= 1.2; } },
 
   // legendary

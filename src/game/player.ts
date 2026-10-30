@@ -81,6 +81,10 @@ export class Player {
   homing = false;
   dashBlast = false;
   frenzy = false;
+  synergyMul = 1;      // thermal shock damage
+  synergyRadius = 1;   // thermal shock radius
+  chainExtra = 0;      // extra chain-lightning targets
+  chainSpread = false; // chains carry burn/frost to their targets
 
   constructor(scene: THREE.Scene) {
     this.ring = new THREE.Mesh(GEO.ring, new THREE.MeshBasicMaterial({
@@ -118,7 +122,9 @@ export class Player {
     this.burnChance = this.frostChance = this.shockChance = 0;
     this.elementMul = this.coinMul = this.magnetMul = 1;
     this.shieldMax = this.shield = 0;
-    this.homing = this.dashBlast = this.frenzy = false;
+    this.homing = this.dashBlast = this.frenzy = this.chainSpread = false;
+    this.synergyMul = this.synergyRadius = 1;
+    this.chainExtra = 0;
     this.mesh.visible = true;
     this.mesh.rotation.set(0, 0, 0);  // the title screen spins the model; facing is handled by the mech itself
     this.updateGunColor();

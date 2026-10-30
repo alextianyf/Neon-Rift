@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { $ } from './dom';
 
-export type FloaterKind = 'dmg' | 'crit' | 'dot' | 'heal' | 'coin';
+export type FloaterKind = 'dmg' | 'crit' | 'dot' | 'heal' | 'coin' | 'word';
 
 interface PointLike {
   x: number;
@@ -29,9 +29,9 @@ export interface Tag {
   z: number;
 }
 
-const LIFE: Record<FloaterKind, number> = { dmg: 0.6, crit: 0.9, dot: 0.7, heal: 0.9, coin: 0.9 };
+const LIFE: Record<FloaterKind, number> = { dmg: 0.6, crit: 0.9, dot: 0.7, heal: 0.9, coin: 0.9, word: 1.1 };
 // Hits from the same source within this window are merged into one rising number.
-const MERGE_WINDOW: Record<FloaterKind, number> = { dmg: 0.12, crit: 0, dot: 0.45, heal: 0.3, coin: 0.5 };
+const MERGE_WINDOW: Record<FloaterKind, number> = { dmg: 0.12, crit: 0, dot: 0.45, heal: 0.3, coin: 0.5, word: 0 };
 const MAX_FLOATERS = 70;
 const v = new THREE.Vector3();
 
@@ -63,6 +63,16 @@ export class Floaters {
     const f: Floater = { el, kind, x: at.x + (Math.random() - 0.5) * 0.6, y: at.y ?? 1, z: at.z, age: 0, life: LIFE[kind], value, key };
     this.items.push(f);
     if (key) this.byKey.set(key, f);
+  }
+
+  // A short callout word (e.g. an element synergy) rising from a point.
+  say(at: PointLike, text: string): void {
+    if (this.items.length >= MAX_FLOATERS) this.release(this.items.shift()!);
+    const el = this.pool.pop() ?? document.createElement('div');
+    el.className = 'floater word';
+    el.textContent = text;
+    this.root.appendChild(el);
+    this.items.push({ el, kind: 'word', x: at.x, y: at.y ?? 1, z: at.z, age: 0, life: LIFE.word, value: 0 });
   }
 
   addTag(x: number, y: number, z: number, html: string): Tag {

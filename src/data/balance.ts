@@ -74,6 +74,8 @@ export const BALANCE = {
     shockTargets: 3,
     shockRange: 5.5,
     shockDmg: 0.6,         // fraction of the hit's damage dealt to each chained enemy
+    thermalRadius: 2.4,    // burn + frost synergy explosion
+    thermalDmg: 35,
   },
   shop: {
     healAmount: 40,

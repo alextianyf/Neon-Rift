@@ -83,6 +83,7 @@ const BURN_COLOR = 0xff8a3d;
 const FROST_COLOR = new THREE.Color(0x66ddff);
 const SHOCK_COLOR = 0x8fb8ff;
 const BURN_TINT = new THREE.Color(0xff7a2a);
+const THERMAL_COLOR = 0xcff6ff;
 const tint = new THREE.Color();
 const frame: AIFrame = { toP: new THREE.Vector3(), dist: 0, spd: 0, desired: new THREE.Vector3(), dt: 0 };
 const vis: VisualState = { t: 0, charge: 0, enraged: false, stunned: false, beamAngle: 0, beamPhase: 0 };
@@ -156,6 +157,11 @@ export class Enemies {
   // Elemental status from a hit; `baseDmg` is the hit's damage before crits.
   applyElement(e: Enemy, el: Element, baseDmg: number): void {
     const p = this.g.player;
+    // fire meeting ice (either order) sets off a thermal shock
+    if ((el === 'burn' && e.frostT > 0) || (el === 'frost' && e.burnT > 0)) {
+      this.thermalShock(e, baseDmg);
+      return;
+    }
     if (el === 'burn') {
       e.burnT = EL.burnDuration;
       e.burnDps = Math.max(e.burnDps, EL.burnDps * p.dmgMul * p.elementMul);
@@ -164,6 +170,17 @@ export class Enemies {
     } else {
       this.chainLightning(e, baseDmg * EL.shockDmg * p.elementMul);
     }
+  }
+
+  // Element synergy: burn + frost on one enemy explode into steam, clearing both statuses.
+  private thermalShock(e: Enemy, baseDmg: number): void {
+    const g = this.g, p = g.player;
+    e.burnT = e.frostT = 0;
+    e.burnDps = 0;
+    const radius = EL.thermalRadius * p.synergyRadius;
+    const dmg = (EL.thermalDmg + baseDmg) * p.elementMul * p.synergyMul;
+    g.floaters.say({ x: e.pos.x, y: e.def.y + 1.2, z: e.pos.z }, '热冲击!');
+    g.projectiles.explode(e.pos.clone(), radius, dmg, THERMAL_COLOR);
   }
 
   update(dt: number): void {
@@ -311,15 +328,21 @@ export class Enemies {
   }
 
   private chainLightning(from: Enemy, dmg: number): void {
+    const p = this.g.player;
     const targets = this.list
       .filter(o => o !== from && o.hp > 0 && Math.hypot(o.pos.x - from.pos.x, o.pos.z - from.pos.z) < EL.shockRange)
       .sort((a, b) => Math.hypot(a.pos.x - from.pos.x, a.pos.z - from.pos.z) - Math.hypot(b.pos.x - from.pos.x, b.pos.z - from.pos.z))
-      .slice(0, EL.shockTargets);
+      .slice(0, EL.shockTargets + p.chainExtra);
     let prev = from;
     const fromPt = (e: Enemy) => ({ x: e.pos.x, y: e.def.y, z: e.pos.z });
+    const spreadBurn = p.chainSpread && from.burnT > 0, spreadFrost = p.chainSpread && from.frostT > 0;
     for (const t of targets) {
       this.g.fx.lightning(fromPt(prev), fromPt(t), SHOCK_COLOR);
-      this.damage(t, dmg, {});
+      // superconduct: frozen targets take double lightning damage
+      const frozen = t.frostT > 0;
+      this.damage(t, dmg * (frozen ? 2 : 1), { crit: frozen });
+      if (t.hp > 0 && spreadBurn) this.applyElement(t, 'burn', dmg);
+      if (t.hp > 0 && spreadFrost) this.applyElement(t, 'frost', dmg);
       prev = t;
     }
     if (targets.length) sfx.zap();

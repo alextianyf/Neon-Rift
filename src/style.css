@@ -130,6 +130,7 @@ canvas { display: block; cursor: none; }
 .floater.dot { font-size: 11px; color: #ff9a4d; }
 .floater.heal { font-size: 15px; color: #55ff99; }
 .floater.coin { font-size: 13px; color: var(--gold); }
+.floater.word { font-size: 17px; font-weight: 800; letter-spacing: 2px; color: #cff6ff; text-shadow: 0 0 12px #6fdcff, 0 0 2px #000; }
 .tag { position: absolute; left: 0; top: 0; text-align: center; font-size: 13px; line-height: 1.35; white-space: nowrap; padding: 3px 10px;
   background: rgba(6, 10, 18, .78); border: 1px solid rgba(255, 255, 255, .14); clip-path: var(--notch); }
 .tag .price { display: block; font-family: var(--font-num); color: var(--gold); font-size: 11px; }
