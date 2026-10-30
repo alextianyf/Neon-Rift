@@ -2,6 +2,8 @@
 
 霓虹裂隙：一款网页端俯视角 Roguelite 射击游戏，纯静态，单人游玩。基于 Three.js + TypeScript + Vite。
 
+**在线试玩：** https://alextianyf.github.io/Neon-Rift/ （每次推送到 `main` 自动部署）
+
 ## 开发
 
 需要 Node.js 18+。
