@@ -22,6 +22,13 @@ const grunt: Behavior = (_e, f) => {
   f.desired.copy(f.toP).multiplyScalar(f.spd);
 };
 
+// Darts at the player in a zigzag so packs spread out instead of moving as one blob.
+const swarmer: Behavior = (e, f) => {
+  const { toP, spd, desired } = f;
+  const weave = Math.sin(e.t * 7 + e.side * 2) * 0.6;
+  desired.set(toP.x - toP.z * weave, 0, toP.z + toP.x * weave).normalize().multiplyScalar(spd);
+};
+
 // Keeps mid range, strafes, and fires aimed shots. Swells up just before shooting.
 const shooter: Behavior = (e, f, g) => {
   const { toP, dist, spd, desired } = f;
@@ -107,4 +114,4 @@ const boss: Behavior = (e, f, g) => {
   }
 };
 
-export const BEHAVIORS: Record<EnemyKind, Behavior> = { grunt, shooter, brute, boss };
+export const BEHAVIORS: Record<EnemyKind, Behavior> = { grunt, swarmer, shooter, brute, boss };

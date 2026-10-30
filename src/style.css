@@ -85,7 +85,7 @@ canvas { display: block; cursor: none; }
 .slot.on { opacity: 1; border-color: var(--wc); box-shadow: inset 0 0 18px color-mix(in srgb, var(--wc) 25%, transparent); }
 .slot kbd { font-family: var(--font-num); font-size: 10px; color: var(--wc); opacity: .8; }
 .slot .wicon { width: 24px; height: 16px; color: var(--wc); filter: drop-shadow(0 0 4px var(--wc)); flex: none; }
-.slot .wname { color: #fff; }
+.slot .wname { color: #fff; white-space: nowrap; }
 .slot .lv { font-family: var(--font-num); font-size: 10px; color: var(--gold); }
 .slot.empty .wname { opacity: .5; }
 .slot .reload { position: absolute; left: 0; right: 0; bottom: 0; height: 2px; }

@@ -14,6 +14,7 @@ import { loadBest, saveBest } from '../ui/storage';
 import { Atmosphere } from './atmosphere';
 import { Effects } from './effects';
 import { Enemies, type Enemy } from './enemies';
+import { Hazards } from './hazards';
 import { Interactables } from './interactables';
 import { Pickups } from './pickups';
 import { Player } from './player';
@@ -50,6 +51,7 @@ export class Game {
   readonly projectiles = new Projectiles(this);
   readonly pickups = new Pickups(this);
   readonly interactables = new Interactables(this);
+  readonly hazards = new Hazards(this);
 
   private readonly clock = new THREE.Clock();
   private upgradeChoices: UpgradeDef[] = [];
@@ -116,6 +118,13 @@ export class Game {
     this.screens.setCrosshair(!paused);
   }
 
+  // Continuous damage (acid) that ignores invulnerability frames and doesn't grant any.
+  drainPlayer(amount: number): void {
+    if (this.state !== 'play') return;
+    this.player.hp -= amount;
+    if (this.player.hp <= 0) this.gameOver();
+  }
+
   damagePlayer(dmg: number, from: THREE.Vector3 | null): void {
     const p = this.player;
     if (p.invuln > 0 || this.state !== 'play') return;
@@ -149,7 +158,8 @@ export class Game {
     this.combo++;
     this.comboT = C.window;
     this.bestCombo = Math.max(this.bestCombo, this.combo);
-    this.score += Math.round(e.def.score * (1 + Math.min(C.maxBonus, this.combo * C.scorePerKill)));
+    const reward = e.elite ? BALANCE.elites.reward : 1;
+    this.score += Math.round(e.def.score * reward * (1 + Math.min(C.maxBonus, this.combo * C.scorePerKill)));
     if (this.player.leech) {
       this.player.heal(this.player.leech);
     }
@@ -212,6 +222,7 @@ export class Game {
     this.projectiles.update(dt);
     this.pickups.update(dt);
     this.interactables.update(dt);
+    this.hazards.update(dt);
     this.checkClear(dt);
     if (this.state === 'play' && this.room.portalReached(this.player.pos)) this.goThroughPortal();
     this.coinsEarned += Math.max(0, this.player.coins - coinsBefore);
@@ -243,7 +254,7 @@ export class Game {
       const [x, z] = s.kind === 'boss'
         ? [0, -this.room.hh * 0.45]
         : this.room.findSpawn(this.player.pos, BALANCE.rooms.spawnMinDist, ENEMIES[s.kind].r);
-      this.enemies.addMarker(s.kind, x, z, s.kind === 'boss' ? 1.5 : 0.75);
+      this.enemies.addMarker(s.kind, x, z, s.kind === 'boss' ? 1.5 : 0.75, s.count, s.elite);
     }
   }
 
@@ -254,10 +265,12 @@ export class Game {
     this.interactables.clear();
     this.fx.clear();
     this.floaters.clear();
+    this.hazards.clear();
     this.room.build(n);
     this.atmosphere.build(this.room);
+    this.hazards.build();
     this.room.plan();
-    this.player.pos.set(0, 0, this.room.hh - 2.5);
+    this.player.pos.copy(this.room.entry);
     this.player.vel.set(0, 0, 0);
     this.player.shield = this.player.shieldMax;
     this.gfx.snapCamera(this.player.pos.x, this.player.pos.z);
@@ -273,14 +286,21 @@ export class Game {
 
   private checkClear(dt: number): void {
     const room = this.room;
-    if (!room.cleared && room.queue.length === 0 && this.enemies.pending === 0 && this.enemies.list.length === 0) {
+    const waveSpawned = room.queue.length === 0 && this.enemies.pending === 0;
+    const alive = this.enemies.list.length;
+    // next wave once the current one is mostly dead
+    if (!room.cleared && waveSpawned && room.hasMoreWaves && alive <= Math.max(2, Math.floor(room.waveSize * BALANCE.rooms.nextWaveAt))) {
+      room.startWave(room.wave + 1);
+      this.hud.toast(`WAVE ${room.wave + 1} / ${room.waves.length}`);
+    }
+    if (!room.cleared && waveSpawned && !room.hasMoreWaves && alive === 0 && this.hazards.openRifts === 0) {
       room.cleared = true;
       room.clearT = 0.9;
       this.hud.toast('扇区已净化');
       sfx.clear();
       this.projectiles.clearEnemyBullets();
       if (room.isBoss || room.n <= 2 || Math.random() < BALANCE.rooms.weaponDropChance) {
-        this.interactables.spawnWeaponDrop(0, 3);
+        this.interactables.spawnWeaponDrop(room.lootSpot.x, room.lootSpot.z);
       }
     }
     if (room.clearT > 0) {

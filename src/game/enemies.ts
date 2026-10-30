@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { WHITE } from '../core/assets';
+import { GEO, WHITE, glowMat } from '../core/assets';
 import { sfx } from '../core/audio';
 import { rand } from '../core/math';
 import { BALANCE } from '../data/balance';
@@ -41,6 +41,8 @@ export interface Enemy {
   burnTick: number;
   frostT: number;
   spawnT: number;      // materialize animation; harmless until it reaches 0
+  elite: boolean;
+  size: number;        // visual and collision scale (elites are bigger)
 }
 
 export interface HitInfo {
@@ -55,11 +57,14 @@ interface Marker {
   kind: EnemyKind;
   rift: Rift;
   spawned: boolean;
+  count: number;
+  elite: boolean;
 }
 
 const MATERIALIZE_TIME = 0.3;
 
 const EL = BALANCE.elements;
+const ELITE = BALANCE.elites;
 const BURN_COLOR = 0xff8a3d;
 const FROST_COLOR = new THREE.Color(0x66ddff);
 const SHOCK_COLOR = 0x8fb8ff;
@@ -83,25 +88,36 @@ export class Enemies {
     return this.list.find(e => e.kind === 'boss');
   }
 
-  addMarker(kind: EnemyKind, x: number, z: number, t = 0.75): void {
+  addMarker(kind: EnemyKind, x: number, z: number, t = 0.75, count = 1, elite = false): void {
     const def = ENEMIES[kind];
-    const height = kind === 'boss' ? 6 : Math.max(1.6, def.r * 2.6);
-    this.markers.push({ kind, rift: new Rift(this.g.gfx.scene, x, z, height, t, def.color), spawned: false });
+    const height = kind === 'boss' ? 6 : Math.max(1.6, def.r * 2.6) * (count > 1 ? 1.4 : 1) * (elite ? 1.4 : 1);
+    const color = elite ? 0xffc83d : def.color;
+    this.markers.push({ kind, rift: new Rift(this.g.gfx.scene, x, z, height, t, color), spawned: false, count, elite });
   }
 
-  spawn(kind: EnemyKind, x: number, z: number): void {
+  spawn(kind: EnemyKind, x: number, z: number, elite = false): void {
     const def = ENEMIES[kind];
     const visual = buildEnemyVisual(kind);
     const mesh = visual.root, mat = visual.mat;
     mesh.position.set(x, def.y, z);
     this.g.gfx.scene.add(mesh);
-    const hp = def.hp * (1 + (this.g.room.n - 1) * BALANCE.scaling.enemyHpPerRoom);
+    const size = elite ? ELITE.size : 1;
+    if (elite) {
+      // golden aura on the ground marks an elite
+      const aura = new THREE.Mesh(GEO.ring, glowMat(0xffc83d, 2.2));
+      aura.rotation.x = -Math.PI / 2;
+      aura.position.y = -def.y + 0.05;
+      aura.scale.setScalar(def.r * 1.5);
+      mesh.add(aura);
+    }
+    const hp = def.hp * (1 + (this.g.room.n - 1) * BALANCE.scaling.enemyHpPerRoom) * (elite ? ELITE.hp : 1);
     this.list.push({
       kind, def, mesh, visual, mat, base: new THREE.Color(def.color),
-      pos: new THREE.Vector3(x, 0, z), vel: new THREE.Vector3(), hp, maxHp: hp, r: def.r,
+      pos: new THREE.Vector3(x, 0, z), vel: new THREE.Vector3(), hp, maxHp: hp, r: def.r * size,
       cd: rand(0.8, 1.8), flash: 0, state: 'move', stateT: 0, dir: new THREE.Vector3(),
       side: Math.random() < 0.5 ? -1 : 1, t: Math.random() * 10, pattern: 0, burst: 0, burstT: 0,
       enraged: false, scale: 1, burnT: 0, burnDps: 0, burnTick: 0, frostT: 0, spawnT: MATERIALIZE_TIME,
+      elite, size,
     });
     mesh.scale.setScalar(0.01);
     if (kind === 'boss') this.g.hud.showBossBar(true, def.name);
@@ -146,7 +162,7 @@ export class Enemies {
       if (e.hp <= 0) continue;
 
       const frozen = e.frostT > 0;
-      const slow = frozen ? 1 - (1 - EL.frostSlow) * (1 - def.ccResist) : 1;
+      const slow = (frozen ? 1 - (1 - EL.frostSlow) * (1 - def.ccResist) : 1) * g.hazards.slowAt(e.pos.x, e.pos.z);
       e.t += dt;
       e.cd -= dt * slow;
       e.flash -= dt;
@@ -185,7 +201,9 @@ export class Enemies {
         e.spawnT -= dt;
         const k = 1 - Math.max(0, e.spawnT) / MATERIALIZE_TIME;
         e.scale *= k < 1 ? k * (1 + Math.sin(e.t * 60) * 0.15) : 1;  // glitchy flicker while forming
-      } else if (frame.dist < e.r + player.r) g.damagePlayer(e.state === 'charge' ? def.dmg * 1.4 : def.dmg, e.pos);
+      } else if (frame.dist < e.r + player.r) {
+        g.damagePlayer((e.state === 'charge' ? def.dmg * 1.4 : def.dmg) * (e.elite ? ELITE.dmg : 1), e.pos);
+      }
 
       e.mesh.position.set(
         e.pos.x + (e.state === 'wind' ? rand(-0.08, 0.08) : 0),
@@ -193,7 +211,7 @@ export class Enemies {
         e.pos.z,
       );
       if (e.kind !== 'boss') e.mesh.rotation.y = Math.atan2(toP.x, toP.z) + (e.kind === 'shooter' ? e.t * 2 : 0);
-      e.mesh.scale.setScalar(e.scale);
+      e.mesh.scale.setScalar(e.scale * e.size);
       vis.t = e.t;
       vis.charge = e.kind === 'shooter' ? Math.max(0, 0.35 - e.cd) / 0.35 : e.state === 'wind' ? 1 : 0;
       vis.enraged = e.enraged;
@@ -270,7 +288,10 @@ export class Enemies {
       if (!m.spawned && r.progress >= 1) {
         m.spawned = true;
         r.close();
-        this.spawn(m.kind, r.x, r.z);
+        for (let i = 0; i < m.count; i++) {
+          const spread = m.count > 1 ? 1.2 : 0;
+          this.spawn(m.kind, r.x + rand(-spread, spread), r.z + rand(-spread, spread), m.elite);
+        }
         const big = m.kind === 'boss';
         g.fx.burst({ x: r.x, y: 1, z: r.z }, def.color, big ? 50 : 14, big ? 12 : 6, big ? 0.3 : 0.16, 0.5);
         g.fx.shockwave(r.x, r.z, big ? 5 : 1.6, def.color);
@@ -291,16 +312,18 @@ export class Enemies {
     e.mat.dispose();
     this.list.splice(this.list.indexOf(e), 1);
 
-    g.fx.burst({ x: e.pos.x, y: def.y, z: e.pos.z }, def.color, big ? 80 : e.kind === 'brute' ? 30 : 16, big ? 16 : 9, big ? 0.4 : 0.22, big ? 1.2 : 0.6);
+    const bits = big ? 80 : e.kind === 'brute' ? 30 : e.kind === 'swarmer' ? 7 : 16;
+    g.fx.burst({ x: e.pos.x, y: def.y, z: e.pos.z }, def.color, bits, big ? 16 : 9, big ? 0.4 : 0.22, big ? 1.2 : 0.6);
     g.fx.shake(big ? 1.2 : 0.2);
     g.fx.hitstop(big ? 0.25 : 0.03);
     if (big) sfx.boom(); else sfx.kill();
 
-    if (Math.random() < def.dropChance) {
+    if (Math.random() < def.dropChance + (e.elite ? 0.4 : 0)) {
       const spread = def.dropCount > 1 ? 1.5 : 0;
       for (let i = 0; i < def.dropCount; i++) g.pickups.spawnOrb(e.pos.x + rand(-spread, spread), e.pos.z + rand(-spread, spread));
     }
-    g.pickups.spawnCoins(e.pos.x, e.pos.z, Math.round(rand(def.coins[0], def.coins[1])));
+    const coins = Math.round(rand(def.coins[0], def.coins[1]) * (e.elite ? ELITE.reward : 1));
+    if (coins > 0) g.pickups.spawnCoins(e.pos.x, e.pos.z, coins);
     if (big) {
       g.hud.showBossBar(false);
       g.gfx.flash(e.pos.x, 3, e.pos.z, 0xff3366, 200);

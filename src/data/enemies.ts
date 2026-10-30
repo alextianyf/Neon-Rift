@@ -1,4 +1,4 @@
-export type EnemyKind = 'grunt' | 'shooter' | 'brute' | 'boss';
+export type EnemyKind = 'grunt' | 'swarmer' | 'shooter' | 'brute' | 'boss';
 
 export interface EnemyDef {
   name: string;
@@ -21,6 +21,10 @@ export const ENEMIES: Record<EnemyKind, EnemyDef> = {
   grunt: {
     name: '冲锋兵', hp: 30, speed: 4.4, r: 0.6, y: 0.55, color: 0xff3355, dmg: 12, score: 10, cost: 1,
     mass: 1, ccResist: 0, dropChance: 0.08, dropCount: 1, coins: [1, 2],
+  },
+  swarmer: {
+    name: '蜂群体', hp: 9, speed: 6.4, r: 0.38, y: 0.4, color: 0xff5a8c, dmg: 6, score: 4, cost: 0.35,
+    mass: 1.4, ccResist: 0, dropChance: 0.02, dropCount: 1, coins: [0, 1],
   },
   shooter: {
     name: '射手', hp: 24, speed: 3.2, r: 0.6, y: 0.9, color: 0xb455ff, dmg: 10, score: 15, cost: 1.5,

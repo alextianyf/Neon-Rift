@@ -88,6 +88,24 @@ function grunt(): EnemyVisual {
   };
 }
 
+// Tiny, fast and numerous: a spinning dart inside a wire tetrahedron.
+function swarmer(): EnemyVisual {
+  const color = ENEMIES.swarmer.color, mat = coreMaterial('swarmer');
+  const root = new THREE.Group(), core = new THREE.Mesh(geo('swarmer-core', () => new THREE.TetrahedronGeometry(0.24)), mat);
+  const shell = new THREE.LineSegments(edges('swarmer-shell', () => new THREE.TetrahedronGeometry(0.46)), lineMat(color, 2.2));
+  root.add(core, shell);
+  const glitch = new Glitch();
+  return {
+    root, mat, shell,
+    animate(dt) {
+      core.rotation.y += dt * 9;
+      shell.rotation.x += dt * 4;
+      shell.rotation.z += dt * 3;
+      glitch.update(dt, 2, [core], shell);
+    },
+  };
+}
+
 function shooter(): EnemyVisual {
   const color = ENEMIES.shooter.color, mat = coreMaterial('shooter');
   const root = new THREE.Group(), core = new THREE.Mesh(geo('shooter-core', () => new THREE.OctahedronGeometry(0.42)), mat);
@@ -179,7 +197,7 @@ function boss(): EnemyVisual {
   };
 }
 
-const BUILDERS: Record<EnemyKind, () => EnemyVisual> = { grunt, shooter, brute, boss };
+const BUILDERS: Record<EnemyKind, () => EnemyVisual> = { grunt, swarmer, shooter, brute, boss };
 
 export function buildEnemyVisual(kind: EnemyKind): EnemyVisual {
   return BUILDERS[kind]();

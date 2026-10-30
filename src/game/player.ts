@@ -224,8 +224,9 @@ export class Player {
     } else {
       const dir = g.input.moveDir(moveDir);
       const k = 1 - Math.exp(-14 * dt);
-      this.vel.x += (dir.x * this.speed - this.vel.x) * k;
-      this.vel.z += (dir.z * this.speed - this.vel.z) * k;
+      const speed = this.speed * g.hazards.slowAt(this.pos.x, this.pos.z);
+      this.vel.x += (dir.x * speed - this.vel.x) * k;
+      this.vel.z += (dir.z * speed - this.vel.z) * k;
       this.pos.addScaledVector(this.vel, dt);
     }
     g.room.collide(this.pos, this.r);

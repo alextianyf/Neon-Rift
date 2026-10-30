@@ -84,6 +84,7 @@ export class Projectiles {
     g.fx.shake(0.45);
     sfx.boom();
     g.gfx.flash(pos.x, 2, pos.z, color, 120);
+    g.hazards.explodeAt(pos, radius);
     for (const e of [...g.enemies.list]) {
       const d = Math.hypot(e.pos.x - pos.x, e.pos.z - pos.z);
       if (d >= radius + e.r) continue;
@@ -153,10 +154,12 @@ export class Projectiles {
       b.life -= dt;
       let dead = b.life <= 0;
 
-      if (!dead && g.room.blocked(pos.x, pos.z, 0)) {
+      if (!dead && g.hazards.hitByShot(pos, b.dmg)) {
+        dead = true;
+      } else if (!dead && g.room.shotBlocked(pos.x, pos.z)) {
         if (b.bounce > 0) {
           // reflect off whichever axis is blocked
-          const hitX = g.room.blocked(pos.x, pz, 0), hitZ = g.room.blocked(px, pos.z, 0);
+          const hitX = g.room.shotBlocked(pos.x, pz), hitZ = g.room.shotBlocked(px, pos.z);
           if (hitX || !hitZ) b.vel.x *= -1;
           if (hitZ || !hitX) b.vel.z *= -1;
           pos.x = px;
@@ -199,7 +202,7 @@ export class Projectiles {
       const b = this.enemyBullets[i], pos = b.mesh.position;
       pos.addScaledVector(b.vel, dt);
       b.life -= dt;
-      let dead = b.life <= 0 || g.room.blocked(pos.x, pos.z, 0);
+      let dead = b.life <= 0 || g.room.shotBlocked(pos.x, pos.z);
       if (!dead && player.invuln <= 0 && Math.hypot(player.pos.x - pos.x, player.pos.z - pos.z) < b.r + player.r * 0.8) {
         g.damagePlayer(b.dmg, pos);
         dead = true;

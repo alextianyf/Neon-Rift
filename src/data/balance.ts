@@ -19,13 +19,40 @@ export const BALANCE = {
     bossEvery: 5,          // rooms 5, 10, 15...
     shopOffset: 3,         // shop when room % bossEvery === shopOffset: rooms 3, 8, 13...
     upgradeChoices: 3,
-    budgetBase: 5,         // spawn budget = budgetBase + room * budgetPerRoom
+    budgetBase: 5,         // spawn budget = (budgetBase + room * budgetPerRoom) * room-area factor
     budgetPerRoom: 3,
-    waveGap: 3.5,          // seconds of breathing room between the two waves
+    nextWaveAt: 0.25,      // next wave starts when at most this fraction of the current wave is alive
+    swarmFromRoom: 2,
     shooterFromRoom: 2,
     bruteFromRoom: 4,
     spawnMinDist: 8,       // enemies never spawn closer than this to the player
     weaponDropChance: 0.3, // after clearing a combat room (rooms 1-2 and bosses always drop one)
+  },
+  elites: {
+    fromRoom: 4,
+    chance: 0.08,          // + chancePerRoom per room after fromRoom, capped at maxChance
+    chancePerRoom: 0.02,
+    maxChance: 0.3,
+    hp: 3,
+    size: 1.3,
+    dmg: 1.3,
+    reward: 3,             // score and coin multiplier
+  },
+  hazards: {
+    fromRoom: 4,           // first combat room with terrain hazards
+    twoTypesFromRoom: 7,
+    riftFromRoom: 6,       // unstable rifts can appear from here
+    riftChance: 0.45,
+    sludgeSlow: 0.5,
+    acidPlayerDps: 10,
+    acidEnemyDps: 20,
+    barrelHp: 20,
+    barrelRadius: 3.2,
+    barrelDmg: 60,
+    barrelPlayerDmg: 20,
+    riftHp: 150,
+    riftSpawnEvery: 4.5,
+    riftReward: 8,
   },
   scaling: {
     enemyHpPerRoom: 0.09,
