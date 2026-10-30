@@ -8,6 +8,7 @@ import { isCombatKind } from '../data/map';
 import type { AABB } from './room';
 import type { Game } from './game';
 import { Rift } from './rift';
+import { t } from '../core/i18n';
 
 // Terrain hazards. Rule: everything affects enemies as much as the player, so they are tools,
 // not just traps (lure enemies into sludge, knock them into acid, blow up barrels near a crowd).
@@ -476,6 +477,6 @@ export class Hazards {
     sfx.boom();
     g.pickups.spawnCoins(r.x, r.z, H.riftReward);
     g.score += 60;
-    g.hud.toast('不稳定裂缝已封闭');
+    g.hud.toast(t('不稳定裂缝已封闭'));
   }
 }

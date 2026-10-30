@@ -1,4 +1,5 @@
 import { rnd } from '../core/rng';
+import { t } from '../core/i18n';
 
 // Sector types and how the branching path between sectors is rolled.
 export type RoomKind = 'combat' | 'elite' | 'treasure' | 'challenge' | 'shop' | 'boss';
@@ -10,12 +11,12 @@ export interface RoomInfo {
 }
 
 export const ROOM_INFO: Record<RoomKind, RoomInfo> = {
-  combat: { name: '战斗扇区', desc: '清除病毒体', color: 0x4ff0ff },
-  elite: { name: '精英扇区', desc: '全是精英，必掉武装', color: 0xffc83d },
-  treasure: { name: '数据宝库', desc: '没有敌人，免费武装与模块', color: 0x55ff99 },
-  challenge: { name: '挑战扇区', desc: '坚持 30 秒，奖励高阶模块', color: 0xff4dd2 },
-  shop: { name: '黑市终端', desc: '用碎片交易', color: 0xffd23f },
-  boss: { name: '裂隙核心', desc: '首领战', color: 0xff2266 },
+  combat: { name: t('战斗扇区'), desc: t('清除病毒体'), color: 0x4ff0ff },
+  elite: { name: t('精英扇区'), desc: t('全是精英，必掉武装'), color: 0xffc83d },
+  treasure: { name: t('数据宝库'), desc: t('没有敌人，免费武装与模块'), color: 0x55ff99 },
+  challenge: { name: t('挑战扇区'), desc: t('坚持 30 秒，奖励高阶模块'), color: 0xff4dd2 },
+  shop: { name: t('黑市终端'), desc: t('用碎片交易'), color: 0xffd23f },
+  boss: { name: t('裂隙核心'), desc: t('首领战'), color: 0xff2266 },
 };
 
 export const BOSS_EVERY = 5;

@@ -1,9 +1,9 @@
 import * as THREE from 'three';
 import { initAudio, setVolume, sfx } from '../core/audio';
 import { Graphics } from '../core/graphics';
-import { Input, type PadButton } from '../core/input';
+import { Input, type PadButton, type TouchAction } from '../core/input';
 import { duck, setMood, setMusicVolume } from '../core/music';
-import { rnd, seedFromString, seedRun, todayKey } from '../core/rng';
+import { rnd, rngState, seedFromString, seedRun, todayKey } from '../core/rng';
 import { BALANCE } from '../data/balance';
 import { DEPTH_CRYSTAL_BONUS, DEPTH_DESC, FINAL_SECTOR, MAX_DEPTH, MODS, VICTORY_CRYSTALS, setDepth } from '../data/depth';
 import { ENEMIES } from '../data/enemies';
@@ -16,17 +16,21 @@ import { Hud } from '../ui/hud';
 import { Screens, type BuildEntry, type StatLine } from '../ui/screens';
 import { loadSettings, saveSettings, type Settings } from '../ui/settings';
 import { loadBest, saveBest } from '../ui/storage';
-import { loadProfile, saveProfile, talentLevel, type Profile } from '../ui/profile';
+import { HISTORY_LIMIT } from '../data/codex';
+import { loadProfile, saveProfile, talentLevel, type CodexKind, type Profile } from '../ui/profile';
+import { clearRun, loadRun, saveRun, type RunSave } from '../ui/runsave';
 import { Atmosphere } from './atmosphere';
 import { Effects } from './effects';
 import { Enemies, type Enemy } from './enemies';
 import { Hazards } from './hazards';
 import { Interactables } from './interactables';
+import { Perks } from './perks';
 import { Pickups } from './pickups';
 import { Player } from './player';
 import { Projectiles } from './projectiles';
 import { Room } from './room';
 import { Tutorial } from './tutorial';
+import { t } from '../core/i18n';
 
 export type GameState = 'title' | 'play' | 'paused' | 'upgrade' | 'transition' | 'dead' | 'won';
 
@@ -59,6 +63,7 @@ export class Game {
   readonly pickups = new Pickups(this);
   readonly interactables = new Interactables(this);
   readonly hazards = new Hazards(this);
+  readonly perks = new Perks(this);
 
   private readonly clock = new THREE.Clock();
   private upgradeChoices: UpgradeDef[] = [];
@@ -71,15 +76,24 @@ export class Game {
   private depth = 0;             // rift depth of the current run
   private endless = false;       // kept going after clearing the final sector
   private crystalsAwarded = 0;   // crystals already paid out this run (at victory)
+  runTime = 0;                   // seconds played this run
+  private runId = 0;
+  private codexTab: CodexKind | 'history' = 'enemies';
   private readonly tutorial = new Tutorial(this, this.profile.seen, () => saveProfile(this.profile));
 
   constructor() {
     this.bindInput();
     this.screens.onClick('startBtn', () => this.start(false));
     this.screens.onClick('dailyBtn', () => this.start(true));
+    this.screens.onClick('continueBtn', () => { const s = loadRun(); if (s) this.start(s.daily, s); });
     this.screens.onClick('restartBtn', () => this.start(this.daily));
     this.screens.onClick('hangarBtn', () => this.openHangar());
     this.screens.onClick('hangarBack', () => this.closeHangar());
+    this.screens.onClick('codexBtn', () => this.openCodex());
+    this.screens.onClick('codexBack', () => this.closeCodex());
+    for (const el of document.querySelectorAll<HTMLElement>('#codexTabs [data-tab]')) {
+      el.addEventListener('click', () => { this.codexTab = el.dataset.tab as CodexKind | 'history'; this.renderCodex(); });
+    }
     this.screens.onClick('menuBtn', () => this.toTitle());
     this.screens.onClick('winContinue', () => this.continueEndless());
     this.screens.onClick('winMenu', () => this.toTitle());
@@ -87,6 +101,7 @@ export class Game {
     this.screens.onClick('depthUp', () => this.changeDepth(1));
     this.refreshTitle();
     this.screens.onClick('resumeBtn', () => this.setPaused(false));
+    this.screens.onClick('quitBtn', () => { duck(false); this.toTitle(); });
     this.screens.bindSettings(this.settings, s => {
       if (s.hints && !this.settings.hints) this.tutorial.reset();
       this.applySettings(s);
@@ -116,6 +131,7 @@ export class Game {
       requestAnimationFrame(loop);
       const dt = this.fx.consumeHitstop(Math.min(this.clock.getDelta(), 1 / 30));
       this.input.pollGamepad();
+      document.body.classList.toggle('playing', this.state === 'play');
       if (this.input.usingPad && this.state === 'play') this.placePadCrosshair();
       if (this.state === 'play') this.update(dt);
       else if (this.state === 'title') {
@@ -135,33 +151,59 @@ export class Game {
     loop();
   }
 
-  start(daily: boolean): void {
+  // New run, or resume `save` from the start of the sector it was taken in.
+  start(daily: boolean, save?: RunSave): void {
     initAudio();
     this.daily = daily;
-    this.depth = daily ? 0 : this.profile.depth;
-    this.endless = false;
-    this.crystalsAwarded = 0;
+    this.depth = save ? save.depth : daily ? 0 : this.profile.depth;
+    this.endless = save?.endless ?? false;
+    this.crystalsAwarded = save?.crystalsAwarded ?? 0;
     setDepth(this.depth);
-    seedRun(daily ? seedFromString(`neon-rift:${todayKey()}`) : undefined);
-    const mech = MECHS[this.profile.selected];
+    const mech = MECHS[save?.mech ?? this.profile.selected] ?? MECHS.vanguard;
     this.player.reset(mech, this.profile.talents);
     this.hud.setSkill(mech.skillName);
     this.score = this.kills = this.coinsEarned = this.combo = this.bestCombo = this.bossKills = 0;
-    this.comboT = 0;
-    this.hud.setBuffs([]);
+    this.comboT = this.runTime = 0;
+    this.runId = Date.now();
+    if (save) {
+      for (const id of save.upgrades) {
+        const u = UPGRADES.find(x => x.id === id);
+        if (u) this.player.addUpgrade(u);
+      }
+      const p = this.player;
+      p.hp = Math.min(save.hp, p.maxHp);
+      p.coins = save.coins;
+      p.revives = save.revives;
+      p.restoreSlots(save.slots, save.weapon);
+      this.score = save.score;
+      this.kills = save.kills;
+      this.coinsEarned = save.coinsEarned;
+      this.bestCombo = save.bestCombo;
+      this.bossKills = save.bossKills;
+      this.runTime = save.playTime;
+    }
+    this.hud.setBuffs(this.player.buffs);
     this.hud.showBossBar(false);
     this.refreshWeapons();
     this.hud.showBest(loadBest());
     this.hud.show(true);
     this.screens.hideAll();
     this.screens.setCrosshair(true);
-    this.enterRoom(1, 'combat');
+    if (save) {
+      seedRun(save.seed);
+      this.enterRoom(save.room, save.kind);
+      this.hud.toast(t('继续 · 扇区 {n}', { n: String(save.room).padStart(2, '0') }));
+    } else {
+      seedRun(daily ? seedFromString(`neon-rift:${todayKey()}`) : undefined);
+      this.enterRoom(1, 'combat');
+    }
     this.state = 'play';
   }
 
   setPaused(paused: boolean): void {
     this.state = paused ? 'paused' : 'play';
     this.input.mouseDown = false;
+    this.input.releaseTouch();
     duck(paused);
     if (paused) this.screens.showPause(this.statLines(), this.buildEntries());
     else this.screens.toggle('pauseScreen', false);
@@ -186,7 +228,7 @@ export class Game {
     this.fx.burst({ x: p.pos.x, y: 1, z: p.pos.z }, 0x55ff99, 40, 10, 0.25, 0.8);
     this.fx.shockwave(p.pos.x, p.pos.z, 6, 0x55ff99);
     sfx.levelUp();
-    this.hud.toast('复苏协议启动');
+    this.hud.toast(t('复苏协议启动'));
   }
 
   damagePlayer(dmg: number, from: THREE.Vector3 | null): void {
@@ -198,7 +240,7 @@ export class Game {
       sfx.shieldBlock();
       this.fx.burst({ x: p.pos.x, y: 0.8, z: p.pos.z }, 0x66ccff, 20, 8, 0.2, 0.5);
       this.hud.hurtFlash('blue');
-      this.hud.toast('护盾抵挡');
+      this.hud.toast(t('护盾抵挡'));
       return;
     }
     p.hp -= dmg * MODS.enemyDmg;
@@ -223,6 +265,7 @@ export class Game {
     this.comboT = C.window;
     this.bestCombo = Math.max(this.bestCombo, this.combo);
     if (e.def.boss) this.bossKills++;
+    this.perks.onKill(e);
     const reward = e.elite ? BALANCE.elites.reward : 1;
     this.score += Math.round(e.def.score * reward * (1 + Math.min(C.maxBonus, this.combo * C.scorePerKill)));
     if (this.player.leech) {
@@ -231,13 +274,45 @@ export class Game {
     this.hud.hitMarker(true);
   }
 
+  // Codex: remember an enemy / weapon / module the first time it shows up.
+  discover(kind: CodexKind, id: string): void {
+    const list = this.profile.codex[kind];
+    if (list.includes(id)) return;
+    list.push(id);
+    saveProfile(this.profile);
+  }
+
+  // Add (or update, after an endless continuation) this run's line in the history.
+  private recordRun(won: boolean): void {
+    const pr = this.profile;
+    const rec = {
+      id: this.runId, date: todayKey(), mech: this.player.mechDef.id, depth: this.depth, daily: this.daily,
+      won, room: this.room.n, score: this.score, kills: this.kills, time: Math.round(this.runTime),
+    };
+    const i = pr.history.findIndex(h => h.id === rec.id);
+    if (i >= 0) {
+      const prev = pr.history[i];
+      pr.totals.kills += rec.kills - prev.kills;
+      pr.totals.time += rec.time - prev.time;
+      pr.history[i] = { ...rec, won: prev.won || won };
+    } else {
+      pr.totals.runs++;
+      pr.totals.kills += rec.kills;
+      pr.totals.time += rec.time;
+      pr.history.unshift(rec);
+      pr.history.length = Math.min(pr.history.length, HISTORY_LIMIT);
+    }
+  }
+
   applyUpgrade(u: UpgradeDef): void {
+    this.discover('upgrades', u.id);
     this.player.addUpgrade(u);
     this.hud.setBuffs(this.player.buffs);
     sfx.pickup();
   }
 
   refreshWeapons(): void {
+    for (const s of this.player.slots) this.discover('weapons', s.id);
     this.hud.renderWeapons(this.player.slots, this.player.weapon, MAX_WEAPON_SLOTS);
   }
 
@@ -275,6 +350,7 @@ export class Game {
       },
       onBlur: () => { if (this.state === 'play') this.setPaused(true); },
       onPad: b => this.onPad(b),
+      onTouch: a => this.onTouch(a),
     };
   }
 
@@ -294,6 +370,7 @@ export class Game {
         break;
       case 'paused':
         if (b === 'start' || b === 'b') this.setPaused(false);
+        else if (b === 'back') click('quitBtn');
         break;
       case 'upgrade':
         if (b === 'x') this.pickUpgrade(0);
@@ -310,13 +387,32 @@ export class Game {
         break;
       case 'title':
         if (visible('hangarScreen')) { if (b === 'b') click('hangarBack'); }
-        else if (b === 'a' || b === 'start') click('startBtn');
+        else if (visible('codexScreen')) {
+          const tabs: (CodexKind | 'history')[] = ['enemies', 'weapons', 'upgrades', 'history'];
+          if (b === 'b') click('codexBack');
+          else if (b === 'lb' || b === 'rb') {
+            this.codexTab = tabs[(tabs.indexOf(this.codexTab) + (b === 'rb' ? 1 : 3)) % 4];
+            this.renderCodex();
+          }
+        }
+        else if (b === 'a') click(visible('continueBtn') ? 'continueBtn' : 'startBtn');
+        else if (b === 'start') click('startBtn');
+        else if (b === 'back') click('codexBtn');
         else if (b === 'y') click('dailyBtn');
         else if (b === 'x') click('hangarBtn');
         else if (b === 'lb') this.changeDepth(-1);
         else if (b === 'rb') this.changeDepth(1);
         break;
     }
+  }
+
+  private onTouch(a: TouchAction): void {
+    if (this.state !== 'play') return;
+    if (a === 'dash') this.player.tryDash(this.input.moveDir(tmp), this);
+    else if (a === 'skill') this.player.trySkill(this);
+    else if (a === 'use') this.interactables.interact();
+    else if (a === 'swap') this.switchWeapon((this.player.weapon + 1) % this.player.slots.length);
+    else if (a === 'pause') this.setPaused(true);
   }
 
   // With a gamepad the crosshair follows the stick's aim point instead of the mouse.
@@ -331,6 +427,7 @@ export class Game {
 
   private update(dt: number): void {
     this.time += dt;
+    this.runTime += dt;
     this.room.time += dt;
     const coinsBefore = this.player.coins;
     this.player.update(dt, this);
@@ -340,6 +437,7 @@ export class Game {
     this.pickups.update(dt);
     this.interactables.update(dt);
     this.hazards.update(dt);
+    this.perks.update(dt);
     this.tutorial.update(dt);
     setMood(this.enemies.boss ? 'boss' : this.room.cleared ? 'calm' : 'combat');
     if (this.room.kind === 'challenge') this.updateChallenge(dt);
@@ -382,6 +480,7 @@ export class Game {
   }
 
   private enterRoom(n: number, kind: RoomKind): void {
+    const seed = rngState();  // saved so a resumed run rebuilds this exact sector
     for (const t of this.portalTags) this.floaters.removeTag(t);
     this.portalTags = [];
     this.enemies.clear();
@@ -391,6 +490,7 @@ export class Game {
     this.fx.clear();
     this.floaters.clear();
     this.hazards.clear();
+    this.perks.clear();
     this.room.build(n, kind);
     this.atmosphere.build(this.room);
     this.hazards.build();
@@ -405,16 +505,28 @@ export class Game {
     if (kind === 'shop') {
       this.interactables.setupShop();
       this.openPaths();
-      this.hud.toast('黑市终端 · 走近按 E 交易');
+      this.hud.toast(t('黑市终端 · 走近按 E 交易'));
     } else if (kind === 'treasure') {
       this.interactables.setupTreasure();
       this.openPaths();
-      this.hud.toast('数据宝库 · 免费拾取');
+      this.hud.toast(t('数据宝库 · 免费拾取'));
     } else if (kind === 'boss') {
-      this.hud.toast('⚠ 裂隙核心');
+      this.hud.toast(t('⚠ 裂隙核心'));
     } else {
-      this.hud.toast(kind === 'combat' ? `扇区 ${String(n).padStart(2, '0')}` : name);
+      this.hud.toast(kind === 'combat' ? t('扇区 {n}', { n: String(n).padStart(2, '0') }) : name);
     }
+    this.saveRunState(seed, n, kind);
+  }
+
+  private saveRunState(seed: number, room: number, kind: RoomKind): void {
+    const p = this.player;
+    saveRun({
+      v: 1, daily: this.daily, dailyDate: todayKey(), depth: this.depth, endless: this.endless, seed, room, kind,
+      score: this.score, kills: this.kills, coinsEarned: this.coinsEarned, bestCombo: this.bestCombo,
+      bossKills: this.bossKills, crystalsAwarded: this.crystalsAwarded, playTime: this.runTime,
+      mech: p.mechDef.id, hp: p.hp, coins: p.coins, revives: p.revives,
+      slots: p.slots, weapon: p.weapon, upgrades: [...p.taken],
+    });
   }
 
   private checkClear(dt: number): void {
@@ -429,7 +541,7 @@ export class Game {
     if (!room.cleared && waveSpawned && !room.hasMoreWaves && alive === 0 && this.hazards.openRifts === 0) {
       room.cleared = true;
       room.clearT = 0.9;
-      this.hud.toast('扇区已净化');
+      this.hud.toast(t('扇区已净化'));
       sfx.clear();
       this.projectiles.clearEnemyBullets();
       if (room.isBoss || room.kind === 'elite' || room.n <= 2 || rnd() < BALANCE.rooms.weaponDropChance) {
@@ -448,10 +560,11 @@ export class Game {
   private openUpgrade(): void {
     this.state = 'upgrade';
     this.input.mouseDown = false;
+    this.input.releaseTouch();
     this.hud.prompt(null);
     const kind = this.room.kind;
     const weights = kind === 'boss' || kind === 'elite' ? ROLL_WEIGHTS.boss : kind === 'challenge' ? ROLL_WEIGHTS.challenge : ROLL_WEIGHTS.room;
-    const title = kind === 'boss' ? '核心战利品 · 选择一个模块' : kind === 'challenge' ? '挑战完成 · 选择一个模块' : '选择一个模块';
+    const title = kind === 'boss' ? t('核心战利品 · 选择一个模块') : kind === 'challenge' ? t('挑战完成 · 选择一个模块') : t('选择一个模块');
     duck(true);
     this.upgradeChoices = rollUpgrades(this.player, BALANCE.rooms.upgradeChoices, weights);
     this.screens.showUpgrades(this.upgradeChoices, title, i => this.pickUpgrade(i));
@@ -478,7 +591,7 @@ export class Game {
       this.portalTags.push(this.floaters.addTag(p.pos.x, 0.3, p.pos.z + 1.9, `<b style="color:${color}">${info.name}</b><span class="price" style="color:#cfd8ef">${info.desc}</span>`));
     }
     sfx.portal();
-    this.hud.toast(kinds.length > 1 ? '选择下一个扇区' : '裂隙通道已开启');
+    this.hud.toast(kinds.length > 1 ? t('选择下一个扇区') : t('裂隙通道已开启'));
   }
 
   // Challenge sectors: survive the timer while enemies keep pouring in, then everything dissolves.
@@ -498,7 +611,7 @@ export class Game {
         this.enemies.purge();
         room.cleared = true;
         room.clearT = 1.2;
-        this.hud.toast('挑战完成');
+        this.hud.toast(t('挑战完成'));
         sfx.clear();
         this.projectiles.clearEnemyBullets();
       }
@@ -523,6 +636,7 @@ export class Game {
   private toTitle(): void {
     this.state = 'title';
     this.tutorial.hide();
+    this.perks.clear();
     setMood('menu');
     this.screens.hideAll();
     this.hud.show(false);
@@ -548,7 +662,24 @@ export class Game {
     const d = this.profile.daily;
     const today = todayKey();
     this.screens.showTitleInfo(this.profile.crystals, MECHS[this.profile.selected].name, d && d.date === today ? d.best : null, today);
+    const save = loadRun();
+    this.screens.showContinue(save ? t('继续上一局 · 扇区 {n}', { n: String(save.room).padStart(2, '0') }) : null);
     this.screens.showDepth(this.profile.depth, this.profile.maxDepth, DEPTH_DESC, this.profile.wins);
+  }
+
+  private openCodex(): void {
+    this.screens.toggle('titleScreen', false);
+    this.renderCodex();
+    this.screens.toggle('codexScreen', true);
+  }
+
+  private closeCodex(): void {
+    this.screens.toggle('codexScreen', false);
+    this.screens.toggle('titleScreen', true);
+  }
+
+  private renderCodex(): void {
+    this.screens.showCodex(this.profile, this.codexTab);
   }
 
   private openHangar(): void {
@@ -599,16 +730,16 @@ export class Game {
   private statLines(): StatLine[] {
     const p = this.player, w = p.weaponDef;
     return [
-      { label: '当前武器', value: `${w.name} Lv.${p.activeSlot.level}` },
-      { label: '伤害倍率', value: `×${p.dmgMul.toFixed(2)}` },
-      { label: '射速倍率', value: `×${p.fireRateMul.toFixed(2)}` },
-      { label: '暴击率 / 暴击伤害', value: `${pct(p.critChance)} / ×${p.critMul.toFixed(1)}` },
-      { label: '点燃 / 冰冻 / 闪电', value: `${pct(p.burnChance)} / ${pct(p.frostChance)} / ${pct(p.shockChance)}` },
-      { label: '穿透 / 反弹 / 多重', value: `${p.pierce} / ${p.bounce} / ${p.extraShots}` },
-      { label: '移动速度', value: p.speed.toFixed(1) },
-      { label: '冲刺冷却', value: `${p.dashCooldown.toFixed(2)}s` },
-      { label: '生命', value: `${Math.ceil(p.hp)} / ${p.maxHp}` },
-      { label: '数据碎片', value: String(p.coins) },
+      { label: t('当前武器'), value: `${w.name} Lv.${p.activeSlot.level}` },
+      { label: t('伤害倍率'), value: `×${p.dmgMul.toFixed(2)}` },
+      { label: t('射速倍率'), value: `×${p.fireRateMul.toFixed(2)}` },
+      { label: t('暴击率 / 暴击伤害'), value: `${pct(p.critChance)} / ×${p.critMul.toFixed(1)}` },
+      { label: t('点燃 / 冰冻 / 闪电'), value: `${pct(p.burnChance)} / ${pct(p.frostChance)} / ${pct(p.shockChance)}` },
+      { label: t('穿透 / 反弹 / 多重'), value: `${p.pierce} / ${p.bounce} / ${p.extraShots}` },
+      { label: t('移动速度'), value: p.speed.toFixed(1) },
+      { label: t('冲刺冷却'), value: `${p.dashCooldown.toFixed(2)}s` },
+      { label: t('生命'), value: `${Math.ceil(p.hp)} / ${p.maxHp}` },
+      { label: t('数据碎片'), value: String(p.coins) },
     ];
   }
 
@@ -624,7 +755,9 @@ export class Game {
 
   private gameOver(): void {
     this.state = 'dead';
+    clearRun();
     this.tutorial.hide();
+    this.perks.clear();
     setMood('off');
     this.input.mouseDown = false;
     this.hud.prompt(null);
@@ -637,6 +770,7 @@ export class Game {
     if (isNewBest) saveBest({ room: this.room.n, score: this.score });
     const crystals = this.runCrystals() - this.crystalsAwarded;
     this.profile.crystals += crystals;
+    this.recordRun(false);
     if (this.daily) {
       const today = todayKey();
       const prev = this.profile.daily?.date === today ? this.profile.daily.best : 0;
@@ -659,6 +793,7 @@ export class Game {
   // Final sector cleared: pay out, unlock the next depth, and offer to keep going (endless).
   private victory(): void {
     this.state = 'won';
+    clearRun();
     this.tutorial.hide();
     setMood('menu');
     this.input.mouseDown = false;
@@ -667,6 +802,7 @@ export class Game {
     this.crystalsAwarded = crystals - VICTORY_CRYSTALS;
     this.profile.crystals += crystals;
     this.profile.wins++;
+    this.recordRun(true);
     let unlocked: number | null = null;
     if (!this.daily && this.depth >= this.profile.maxDepth && this.depth < MAX_DEPTH) {
       this.profile.maxDepth = this.depth + 1;
@@ -692,7 +828,7 @@ export class Game {
   private continueEndless(): void {
     this.endless = true;
     this.screens.toggle('winScreen', false);
-    this.hud.toast('无尽模式 · 继续深入');
+    this.hud.toast(t('无尽模式 · 继续深入'));
     this.openUpgrade();
   }
 

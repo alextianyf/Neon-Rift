@@ -1,3 +1,4 @@
+import { t } from '../core/i18n';
 // Run goal and rift depth (ascension). Clearing the final sector wins the run and unlocks the next
 // depth; each depth stacks one more modifier on top of the previous ones.
 
@@ -16,12 +17,12 @@ export interface DepthMods {
 }
 
 export const DEPTH_DESC: string[] = [
-  '标准难度',
-  '病毒体生命 +25%',
-  '病毒体伤害 +25%',
-  '精英更常见，第 2 扇区起出现',
-  '回复球效果 -40%，黑市价格 +25%',
-  '首领生命 +50%，病毒体生命再 +15%',
+  t('标准难度'),
+  t('病毒体生命 +25%'),
+  t('病毒体伤害 +25%'),
+  t('精英更常见，第 2 扇区起出现'),
+  t('回复球效果 -40%，黑市价格 +25%'),
+  t('首领生命 +50%，病毒体生命再 +15%'),
 ];
 
 // Live modifiers for the current run; set once at run start.

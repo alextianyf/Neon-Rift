@@ -10,6 +10,7 @@ import { buildEnemyVisual, type EnemyVisual, type VisualState } from './enemyMod
 import { Rift } from './rift';
 import type { Game } from './game';
 import { MODS } from '../data/depth';
+import { t } from '../core/i18n';
 
 export type AIState = 'move' | 'wind' | 'charge' | 'stun' | 'fuse' | 'aim' | 'beam' | 'spiral' | 'tpout' | 'tpin';
 
@@ -128,6 +129,7 @@ export class Enemies {
       aura.scale.setScalar(def.r * 1.5);
       mesh.add(aura);
     }
+    this.g.discover('enemies', kind);
     const hp = def.hp * (1 + (this.g.room.n - 1) * BALANCE.scaling.enemyHpPerRoom) * (elite ? ELITE.hp : 1)
       * MODS.enemyHp * (def.boss ? MODS.bossHp : 1);
     this.list.push({
@@ -181,7 +183,7 @@ export class Enemies {
     e.burnDps = 0;
     const radius = EL.thermalRadius * p.synergyRadius;
     const dmg = (EL.thermalDmg + baseDmg) * p.elementMul * p.synergyMul;
-    g.floaters.say({ x: e.pos.x, y: e.def.y + 1.2, z: e.pos.z }, '热冲击!');
+    g.floaters.say({ x: e.pos.x, y: e.def.y + 1.2, z: e.pos.z }, t('热冲击!'));
     g.projectiles.explode(e.pos.clone(), radius, dmg, THERMAL_COLOR);
   }
 

@@ -8,6 +8,7 @@ import { MAX_WEAPON_SLOTS, STARTING_WEAPON, WEAPONS, weaponLevelMul, type Weapon
 import type { Game } from './game';
 import { MechModel } from './mech';
 import { MECHS, type MechDef, type TalentId } from '../data/meta';
+import { t } from '../core/i18n';
 
 const P = BALANCE.player;
 const raycaster = new THREE.Raycaster();
@@ -61,6 +62,7 @@ export class Player {
   slots: WeaponSlot[] = [];
   weapon = 0;  // index into slots
   buffs: string[] = [];
+  readonly taken: string[] = [];  // upgrade ids in pick order (for run saves)
   private readonly upgrades = new Map<string, number>();
 
   // stats changed by upgrades
@@ -90,6 +92,15 @@ export class Player {
   synergyRadius = 1;   // thermal shock radius
   chainExtra = 0;      // extra chain-lightning targets
   chainSpread = false; // chains carry burn/frost to their targets
+  // playstyle legendaries (see Perks for the ones with their own logic)
+  flameTrail = false;  // dashing leaves burning ground
+  rocketEvery = 0;     // every Nth shot also fires a rocket (0 = off)
+  orbitals = 0;        // blades circling the mech
+  killBlast = false;   // kills explode
+  dashNova = false;    // dashing fires a ring of shots
+  sentinel = false;    // standing still boosts damage and fire rate
+  private shotCount = 0;
+  private stillT = 0;
 
   constructor(scene: THREE.Scene) {
     this.ring = new THREE.Mesh(GEO.ring, new THREE.MeshBasicMaterial({
@@ -119,6 +130,7 @@ export class Player {
     this.slots = [{ id: STARTING_WEAPON, level: 1 }];
     this.weapon = 0;
     this.buffs = [];
+    this.taken.length = 0;
     this.upgrades.clear();
     this.dmgMul = this.rateMul = this.dashCdMul = this.blastMul = this.blastDmgMul = 1;
     this.extraShots = this.pierce = this.bounce = this.leech = 0;
@@ -128,6 +140,8 @@ export class Player {
     this.elementMul = this.coinMul = this.magnetMul = 1;
     this.shieldMax = this.shield = 0;
     this.homing = this.dashBlast = this.frenzy = this.chainSpread = false;
+    this.flameTrail = this.killBlast = this.dashNova = this.sentinel = false;
+    this.rocketEvery = this.orbitals = this.shotCount = this.stillT = 0;
     this.synergyMul = this.synergyRadius = 1;
     this.chainExtra = 0;
     this.mesh.visible = true;
@@ -168,7 +182,7 @@ export class Player {
     if (def.skill === 'overdrive') {
       this.skillT = 5;
       sfx.levelUp();
-      g.hud.toast('过载射击');
+      g.hud.toast(t('过载射击'));
     } else if (def.skill === 'barrier') {
       this.skillT = 3;
       this.invuln = Math.max(this.invuln, 3);
@@ -227,7 +241,12 @@ export class Player {
   }
 
   get fireRateMul(): number {
-    return this.rateMul * (this.frenzy && this.hp < this.maxHp * 0.5 ? 1.5 : 1) * (this.overdrive ? 1.6 : 1);
+    return this.rateMul * (this.frenzy && this.hp < this.maxHp * 0.5 ? 1.5 : 1) * (this.overdrive ? 1.6 : 1) * (this.anchored ? 1.25 : 1);
+  }
+
+  // Sentinel module: planted for a moment.
+  get anchored(): boolean {
+    return this.sentinel && this.stillT > 0.5;
   }
 
   // 0..1, how far the current weapon's cooldown has recovered
@@ -248,6 +267,14 @@ export class Player {
     u.apply(this);
     this.upgrades.set(u.id, this.upgradeCount(u.id) + 1);
     this.buffs.push(u.name);
+    this.taken.push(u.id);
+  }
+
+  // Restore weapons from a run save.
+  restoreSlots(slots: WeaponSlot[], active: number): void {
+    this.slots = slots.map(s => ({ ...s }));
+    this.weapon = Math.min(active, this.slots.length - 1);
+    this.updateGunColor();
   }
 
   heal(n: number): void {
@@ -293,11 +320,17 @@ export class Player {
     this.invuln = Math.max(this.invuln, P.dashInvuln);
     this.dashCd = this.dashCooldown;
     sfx.dash();
+    if (this.dashNova) {
+      const w = this.weaponDef;
+      const shot = { dmg: w.dmg * this.dmgMul * weaponLevelMul(this.activeSlot.level) * 0.8, pierce: 1, bounce: 0, blast: 0, homing: false };
+      const from = new THREE.Vector3(this.pos.x, CANNON_Y, this.pos.z);
+      for (let i = 0; i < 12; i++) g.projectiles.firePlayer(from, (i / 12) * Math.PI * 2, Math.max(22, w.speed), { ...w, blast: undefined, life: 0.6 }, shot);
+    }
     if (this.dashBlast) g.projectiles.explode(this.pos, P.dashBlastRadius * this.blastMul, P.dashBlastDmg * this.dmgMul * this.blastDmgMul, 0x4ff0ff);
   }
 
   update(dt: number, g: Game): void {
-    if (g.input.usingPad) {
+    if (g.input.stickAim) {
       // right stick aims directly; the aim point sits a fixed distance ahead
       this.aim.set(g.input.padAim.x, 0, g.input.padAim.y);
       aimPoint.set(this.pos.x + this.aim.x * 7, CANNON_Y, this.pos.z + this.aim.z * 7);
@@ -313,6 +346,7 @@ export class Player {
     this.fireCd -= dt;
     this.skillCd -= dt;
     this.skillT -= dt;
+    this.stillT = this.vel.lengthSq() < 0.5 && this.dashT <= 0 ? this.stillT + dt : 0;
     if (this.overdrive && Math.random() < dt * 20) {
       g.fx.burst({ x: this.pos.x, y: 1.4, z: this.pos.z }, this.mechDef.palette.accent, 1, 2, 0.12, 0.3);
     }
@@ -334,11 +368,12 @@ export class Player {
     if (g.input.firing && this.fireCd <= 0) this.fire(g);
 
     this.mesh.position.copy(this.pos);
-    this.faceYaw = g.input.usingPad ? Math.atan2(this.aim.x, this.aim.z) : this.screenFacing(g);
+    this.faceYaw = g.input.stickAim ? Math.atan2(this.aim.x, this.aim.z) : this.screenFacing(g);
     this.mech.update(dt, this.vel, this.faceYaw, this.speed, this.dashT > 0);
     // blink while invulnerable after taking a hit
     this.mesh.visible = !(this.invuln > 0 && this.dashT <= 0 && Math.floor(g.time * 20) % 2 === 0);
     this.ring.material.opacity = this.dashCd <= 0 ? 0.45 : 0.1;
+    this.ring.material.color.setHex(this.anchored ? 0xffc83d : 0x4ff0ff);
     this.shieldBubble.visible = this.shield > 0 || (this.mechDef.skill === 'barrier' && this.skillT > 0);
     this.shieldBubble.material.opacity = 0.14 + Math.sin(g.time * 4) * 0.05;
     g.gfx.playerLight.position.set(this.pos.x, 3.5, this.pos.z + 1);
@@ -360,7 +395,7 @@ export class Player {
     const dx = aimPoint.x - muzzle.x, dz = aimPoint.z - muzzle.z;
     const base = dx * this.aim.x + dz * this.aim.z > 0.5 ? Math.atan2(dx, dz) : yaw;
     const shot = {
-      dmg: w.dmg * this.dmgMul * weaponLevelMul(this.activeSlot.level) * (this.overdrive ? 1.2 : 1),
+      dmg: w.dmg * this.dmgMul * weaponLevelMul(this.activeSlot.level) * (this.overdrive ? 1.2 : 1) * (this.anchored ? 1.5 : 1),
       pierce: (w.pierce ?? 0) + this.pierce,
       bounce: (w.bounce ?? 0) + this.bounce,
       blast: w.blast ? w.blast * this.blastMul : 0,
@@ -370,6 +405,14 @@ export class Player {
       const a = base + (count > 1 ? -spread + 2 * spread * i / (count - 1) : 0) + rand(-1, 1) * jitter;
       const speed = w.speed * (w.count > 1 ? rand(0.85, 1.1) : 1);
       g.projectiles.firePlayer(muzzle, a, speed, w, shot);
+    }
+    this.shotCount++;
+    if (this.rocketEvery && this.shotCount % this.rocketEvery === 0) {
+      const r = WEAPONS.rocket;
+      g.projectiles.firePlayer(muzzle, base, r.speed, r, {
+        dmg: r.dmg * this.dmgMul, pierce: 0, bounce: 0, blast: (r.blast ?? 2) * this.blastMul, homing: this.homing,
+      });
+      sfx.shoot.rocket();
     }
     this.vel.addScaledVector(this.aim, -w.recoil);
     g.fx.shake(w.shake);

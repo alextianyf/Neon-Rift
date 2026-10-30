@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <title>霓虹裂隙 Neon Rift</title>
 <link rel="icon" type="image/svg+xml" href="favicon.svg">
 </head>
@@ -42,7 +42,17 @@
   <div id="hint"><span class="lbl">TIP</span><span id="hintText"></span></div>
 </div>
 
+<div id="touchUI">
+  <button data-act="pause" class="tpause">❚❚</button>
+  <button data-act="swap" class="tswap">换枪</button>
+  <button data-act="use" class="tuse">拾取</button>
+  <button data-act="skill" class="tskill">技能</button>
+  <button data-act="dash" class="tdash">冲刺</button>
+</div>
+<div id="rotateHint">横屏体验更好</div>
+
 <div id="titleScreen" class="overlay">
+  <button id="langBtn" class="mini">EN</button>
   <div class="kicker">DIMENSIONAL BREACH DETECTED</div>
   <h1 class="glitch" data-text="NEON RIFT">NEON RIFT</h1>
   <div class="sub">霓虹裂隙 · 驾驶机甲，深入裂隙，清除病毒体</div>
@@ -69,9 +79,11 @@
     <span id="titleDaily" class="dim"></span>
   </div>
   <div class="titlebtns">
+    <button class="go hidden" id="continueBtn">继续上一局</button>
     <button class="go" id="startBtn">启动机体</button>
     <button class="go alt" id="dailyBtn">每日挑战</button>
     <button class="go alt" id="hangarBtn">机库</button>
+    <button class="go alt" id="codexBtn">图鉴</button>
   </div>
 </div>
 
@@ -97,7 +109,11 @@
       <label class="opt"><input type="checkbox" id="optHints"> 新手提示（重新打开会从头提示）</label>
     </div>
   </div>
-  <button class="go" id="resumeBtn">继续作战</button>
+  <div class="titlebtns">
+    <button class="go" id="resumeBtn">继续作战</button>
+    <button class="go alt" id="quitBtn">保存并退出</button>
+  </div>
+  <div class="padhint dim">进度保存在本扇区开始时，下次从标题界面继续</div>
 </div>
 
 <div id="deadScreen" class="overlay hidden">
@@ -120,6 +136,20 @@
     <button class="go alt" id="winMenu">返回主菜单</button>
   </div>
   <div class="padhint dim">手柄 A 继续 · B 返回</div>
+</div>
+
+<div id="codexScreen" class="overlay hidden">
+  <div class="kicker">DATABASE</div>
+  <h2>图鉴</h2>
+  <div id="codexTabs">
+    <button class="mini" data-tab="enemies">病毒体</button>
+    <button class="mini" data-tab="weapons">武装</button>
+    <button class="mini" data-tab="upgrades">模块</button>
+    <button class="mini" data-tab="history">战绩</button>
+    <span id="codexCount" class="dim"></span>
+  </div>
+  <div id="codexList" class="cgrid"></div>
+  <button class="go" id="codexBack">返回</button>
 </div>
 
 <div id="hangarScreen" class="overlay hidden">

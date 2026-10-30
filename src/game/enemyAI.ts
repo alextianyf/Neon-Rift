@@ -4,6 +4,7 @@ import { rand } from '../core/math';
 import type { EnemyKind } from '../data/enemies';
 import type { Enemy } from './enemies';
 import type { Game } from './game';
+import { t } from '../core/i18n';
 
 // Per-frame inputs for a behavior. A behavior writes its intended velocity into `desired`
 // and may set `e.scale` / `e.charge` for telegraph animations; movement and collision happen afterwards.
@@ -154,7 +155,7 @@ const brute: Behavior = (e, f, g) => {
 // Guardian: cycles ring burst -> aimed volleys -> summon minions. Faster and denser below 50% HP.
 const boss: Behavior = (e, f, g) => {
   const { toP, dist, spd, desired } = f;
-  enrage(e, g, '核心过载！');
+  enrage(e, g, t('核心过载！'));
   if (dist > 8) desired.copy(toP).multiplyScalar(spd);
   else desired.set(-toP.z, 0, toP.x).multiplyScalar(spd * 0.7);
 
@@ -190,7 +191,7 @@ const boss: Behavior = (e, f, g) => {
 // Weaver: circles the arena; sweeps three rotating laser beams, scatters drifting mines,
 // and calls in bombers. Lasers are telegraphed with a flickering warning first.
 const boss2: Behavior = (e, f, g) => {
-  enrage(e, g, '织网过载！');
+  enrage(e, g, t('织网过载！'));
   // patrol a circle around the room center
   const orbit = Math.atan2(e.pos.x, e.pos.z) + 0.6;
   const tx = Math.sin(orbit) * 6, tz = Math.cos(orbit) * 5;
@@ -240,7 +241,7 @@ const boss2: Behavior = (e, f, g) => {
 // Sovereign: phases out through a rift and reappears elsewhere, fires rotating spirals,
 // and summons elite guards.
 const boss3: Behavior = (e, f, g) => {
-  enrage(e, g, '主宰觉醒！');
+  enrage(e, g, t('主宰觉醒！'));
   e.stateT -= f.dt;
   if (e.state === 'tpout') {
     e.scale = Math.max(0.05, e.stateT / 0.6);

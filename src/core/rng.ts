@@ -13,6 +13,8 @@ export function rnd(): number {
   return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
 }
 
+export const rngState = (): number => state;
+
 export const rrand = (a: number, b: number): number => a + rnd() * (b - a);
 
 export function seedRun(seed: number = (Math.random() * 2 ** 32) >>> 0): void {

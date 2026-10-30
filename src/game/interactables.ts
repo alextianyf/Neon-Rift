@@ -8,6 +8,7 @@ import { STARTING_WEAPON, WEAPONS, type WeaponId } from '../data/weapons';
 import type { Tag } from '../ui/floaters';
 import type { Game } from './game';
 import { MODS } from '../data/depth';
+import { t } from '../core/i18n';
 
 export type Offer =
   | { kind: 'weapon'; id: WeaponId; level: number }
@@ -37,13 +38,13 @@ function offerColor(o: Offer): number {
 function offerName(o: Offer): string {
   if (o.kind === 'weapon') return WEAPONS[o.id].name + (o.level > 1 ? ` Lv.${o.level}` : '');
   if (o.kind === 'upgrade') return o.upgrade.name;
-  return '维修包';
+  return t('维修包');
 }
 
 function offerDesc(o: Offer): string {
   if (o.kind === 'weapon') return WEAPONS[o.id].desc;
   if (o.kind === 'upgrade') return `${RARITY_LABEL[o.upgrade.rarity]} · ${o.upgrade.desc}`;
-  return `回复 ${o.amount} 生命`;
+  return t('回复 {n} 生命', { n: o.amount });
 }
 
 // Things the player walks up to and presses E on: weapon drops and shop items.
@@ -94,7 +95,7 @@ export class Interactables {
     group.add(icon);
     g.gfx.scene.add(group);
 
-    const priceHtml = price > 0 ? `<span class="price">${price} 碎片</span>` : '';
+    const priceHtml = price > 0 ? `<span class="price">${t('{n} 碎片', { n: price })}</span>` : '';
     const colorCss = `#${color.toString(16).padStart(6, '0')}`;
     const tag = g.floaters.addTag(x, iconY + 0.9, z, `<b style="color:${colorCss}">${offerName(offer)}</b>${priceHtml}`);
     this.items.push({ offer, price, group, icon, pos: group.position, tag, t: Math.random() * 10 });
@@ -140,12 +141,12 @@ export class Interactables {
       return;
     }
     const o = best.offer;
-    let verb = best.price > 0 ? '购买' : '拾取';
+    let verb = best.price > 0 ? t('购买') : t('拾取');
     if (o.kind === 'weapon') {
-      if (p.owns(o.id)) verb = best.price > 0 ? '购买并升级' : '升级';
-      else if (p.slots.length >= 3) verb = `${verb}并替换 ${WEAPONS[p.activeSlot.id].name}`;
+      if (p.owns(o.id)) verb = best.price > 0 ? t('购买并升级') : t('升级');
+      else if (p.slots.length >= 3) verb = t('{verb}并替换 {w}', { verb, w: WEAPONS[p.activeSlot.id].name });
     }
-    const cost = best.price > 0 ? ` · ${best.price} 碎片` : '';
+    const cost = best.price > 0 ? ` · ${t('{n} 碎片', { n: best.price })}` : '';
     this.g.hud.prompt(`<kbd>E</kbd> ${verb} <b>${offerName(o)}</b>${cost}<div class="pdesc">${offerDesc(o)}</div>`, best.price <= p.coins);
   }
 
@@ -154,7 +155,7 @@ export class Interactables {
     if (!it) return;
     if (it.price > p.coins) {
       sfx.denied();
-      g.hud.toast('碎片不足');
+      g.hud.toast(t('碎片不足'));
       return;
     }
     p.coins -= it.price;
@@ -165,8 +166,8 @@ export class Interactables {
     if (o.kind === 'weapon') {
       const res = p.addWeapon(o.id);
       for (let i = 1; i < o.level; i++) p.addWeapon(o.id);
-      if (res.kind === 'levelup') { sfx.levelUp(); g.hud.toast(`${WEAPONS[o.id].name} 升级到 Lv.${res.level}`); }
-      else { sfx.pickup(); g.hud.toast(`获得 ${WEAPONS[o.id].name}`); }
+      if (res.kind === 'levelup') { sfx.levelUp(); g.hud.toast(t('{w} 升级到 Lv.{n}', { w: WEAPONS[o.id].name, n: res.level })); }
+      else { sfx.pickup(); g.hud.toast(t('获得 {w}', { w: WEAPONS[o.id].name })); }
       if (res.kind === 'swapped') this.spawn({ kind: 'weapon', id: res.dropped.id, level: res.dropped.level }, it.pos.x, it.pos.z);
       g.refreshWeapons();
     } else if (o.kind === 'upgrade') {

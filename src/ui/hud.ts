@@ -4,6 +4,7 @@ import type { WeaponSlot } from '../game/player';
 import { $ } from './dom';
 import { weaponIcon } from './icons';
 import type { BestRecord } from './storage';
+import { t } from '../core/i18n';
 
 export interface HudStats {
   hp: number;
@@ -93,7 +94,7 @@ export class Hud {
     for (let i = 0; i < maxSlots; i++) {
       const s = slots[i];
       if (!s) {
-        html.push(`<div class="slot empty"><kbd>${i + 1}</kbd><span class="wname">— 空槽 —</span></div>`);
+        html.push(`<div class="slot empty"><kbd>${i + 1}</kbd><span class="wname">${t('— 空槽 —')}</span></div>`);
         continue;
       }
       const w = WEAPONS[s.id];
@@ -119,7 +120,7 @@ export class Hud {
   }
 
   showBest(best: BestRecord | null): void {
-    this.best.textContent = best ? `扇区 ${best.room} / ${best.score}` : '-';
+    this.best.textContent = best ? t('扇区 {a} / {b}', { a: best.room, b: best.score }) : '-';
   }
 
   showBossBar(visible: boolean, name = ''): void {

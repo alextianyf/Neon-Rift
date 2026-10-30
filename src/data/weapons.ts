@@ -1,3 +1,4 @@
+import { t } from '../core/i18n';
 export type WeaponId = 'pulse' | 'smg' | 'shotgun' | 'arc' | 'frost' | 'flame' | 'grenade' | 'rocket' | 'rail';
 export type Element = 'burn' | 'frost' | 'shock';
 
@@ -32,45 +33,45 @@ export interface WeaponDef {
 
 export const WEAPONS: Record<WeaponId, WeaponDef> = {
   pulse: {
-    id: 'pulse', name: '脉冲枪', desc: '均衡的速射能量枪', price: 0,
+    id: 'pulse', name: t('脉冲枪'), desc: t('均衡的速射能量枪'), price: 0,
     rate: 0.11, dmg: 11, speed: 34, spread: 0.05, count: 1, color: 0x4ff0ff, size: 0.17, knock: 2, life: 0.9, recoil: 0.3, shake: 0.04,
   },
   smg: {
-    id: 'smg', name: '冲锋枪', desc: '极高射速，精度较差', price: 25,
+    id: 'smg', name: t('冲锋枪'), desc: t('极高射速，精度较差'), price: 25,
     rate: 0.055, dmg: 6, speed: 32, spread: 0, count: 1, jitter: 0.14, color: 0x7dff6a, size: 0.12, knock: 1, life: 0.6, recoil: 0.12, shake: 0.02,
     glow: 2, flash: 10,
   },
   shotgun: {
-    id: 'shotgun', name: '霰弹枪', desc: '近距离爆发，强力击退', price: 30,
+    id: 'shotgun', name: t('霰弹枪'), desc: t('近距离爆发，强力击退'), price: 30,
     rate: 0.6, dmg: 9, speed: 28, spread: 0.32, count: 7, color: 0xffb84d, size: 0.14, knock: 7, life: 0.36, recoil: 4, shake: 0.22,
   },
   arc: {
-    id: 'arc', name: '电弧枪', desc: '命中时闪电链跳向附近敌人', price: 35,
+    id: 'arc', name: t('电弧枪'), desc: t('命中时闪电链跳向附近敌人'), price: 35,
     rate: 0.32, dmg: 15, speed: 42, spread: 0, count: 1, color: 0x8fb8ff, size: 0.16, knock: 2, life: 0.8, recoil: 0.4, shake: 0.06,
     element: 'shock', elementChance: 1,
   },
   frost: {
-    id: 'frost', name: '冰晶枪', desc: '穿透一个敌人并冻结减速', price: 30,
+    id: 'frost', name: t('冰晶枪'), desc: t('穿透一个敌人并冻结减速'), price: 30,
     rate: 0.18, dmg: 10, speed: 26, spread: 0, count: 1, jitter: 0.03, color: 0x9ff3ff, size: 0.2, knock: 1.5, life: 0.9, recoil: 0.25, shake: 0.04,
     pierce: 1, element: 'frost', elementChance: 1,
   },
   flame: {
-    id: 'flame', name: '烈焰喷射器', desc: '短程持续喷射，穿透并点燃敌人', price: 35,
+    id: 'flame', name: t('烈焰喷射器'), desc: t('短程持续喷射，穿透并点燃敌人'), price: 35,
     rate: 0.045, dmg: 3.5, speed: 15, spread: 0, count: 1, jitter: 0.22, color: 0xff7a2a, size: 0.22, knock: 0.6, life: 0.42, recoil: 0.05, shake: 0.015,
     stretch: 1, glow: 1.4, flash: 4, pierce: 99, drag: 2.5, grow: 1.4, element: 'burn', elementChance: 0.3,
   },
   grenade: {
-    id: 'grenade', name: '弹跳榴弹', desc: '碰墙反弹，触敌或到时爆炸', price: 35,
+    id: 'grenade', name: t('弹跳榴弹'), desc: t('碰墙反弹，触敌或到时爆炸'), price: 35,
     rate: 0.75, dmg: 24, speed: 17, spread: 0, count: 1, color: 0x9dff3a, size: 0.26, knock: 3, life: 1.1, recoil: 2, shake: 0.1,
     stretch: 1, bounce: 3, blast: 3, drag: 0.8,
   },
   rocket: {
-    id: 'rocket', name: '火箭炮', desc: '大范围爆炸伤害', price: 40,
+    id: 'rocket', name: t('火箭炮'), desc: t('大范围爆炸伤害'), price: 40,
     rate: 0.95, dmg: 30, speed: 17, spread: 0, count: 1, color: 0xff4dd2, size: 0.3, knock: 3, life: 2, recoil: 3, shake: 0.12,
     stretch: 1, blast: 3.4,
   },
   rail: {
-    id: 'rail', name: '磁轨炮', desc: '贯穿一切的高能射线', price: 45,
+    id: 'rail', name: t('磁轨炮'), desc: t('贯穿一切的高能射线'), price: 45,
     rate: 1.1, dmg: 75, speed: 95, spread: 0, count: 1, color: 0xffffff, size: 0.16, knock: 12, life: 0.45, recoil: 5, shake: 0.35,
     stretch: 12, pierce: 99,
   },

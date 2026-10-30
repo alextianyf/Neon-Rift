@@ -129,6 +129,16 @@ export class Projectiles {
     }
   }
 
+  // Orbiting blades eat enemy bullets that touch them.
+  clearEnemyBulletsAt(points: THREE.Vector3[], radius: number): void {
+    for (let i = this.enemyBullets.length - 1; i >= 0; i--) {
+      const p = this.enemyBullets[i].mesh.position;
+      if (!points.some(q => Math.hypot(p.x - q.x, p.z - q.z) < radius)) continue;
+      this.release(this.enemyBullets[i].mesh);
+      this.enemyBullets.splice(i, 1);
+    }
+  }
+
   clearEnemyBullets(): void {
     for (const b of this.enemyBullets) this.release(b.mesh);
     this.enemyBullets.length = 0;

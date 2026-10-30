@@ -4,6 +4,7 @@ export interface Settings {
   damageNumbers: boolean;
   hints: boolean;
   music: number;           // 0..1, relative to the master volume
+  lang?: 'zh' | 'en';      // unset: follow the browser language
 }
 
 const KEY = 'neonrift.settings';

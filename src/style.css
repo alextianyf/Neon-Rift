@@ -170,7 +170,7 @@ button.mini:disabled { background: rgba(255, 255, 255, .15); color: rgba(255, 25
 .tag .price { display: block; font-family: var(--font-num); color: var(--gold); font-size: 11px; }
 
 /* ---------- full-screen menus ---------- */
-.overlay { position: fixed; inset: 0; z-index: 6; display: flex; align-items: center; justify-content: center; flex-direction: column;
+.overlay { position: fixed; inset: 0; z-index: 6; display: flex; align-items: center; justify-content: safe center; flex-direction: column; overflow-y: auto;
   background: radial-gradient(ellipse at center, rgba(10, 20, 36, .82), rgba(3, 4, 9, .94)); backdrop-filter: blur(3px);
   text-align: center; padding: 16px; cursor: default; }
 .kicker { font-family: var(--font-num); font-size: 11px; letter-spacing: 6px; color: var(--cyan); opacity: .8; margin-bottom: 8px; }
@@ -239,3 +239,74 @@ button.go:hover { background: rgba(79, 240, 255, .2); }
 #hint.on { opacity: 1; transform: translate(-50%, 0); }
 #hint .lbl { color: var(--cyan); flex: none; }
 #hint kbd { font-family: var(--font-num); font-size: 12px; color: #05070d; background: var(--cyan); padding: 1px 7px; margin: 0 2px; font-weight: 800; }
+
+/* codex */
+#codexTabs { display: flex; gap: 8px; align-items: center; margin-bottom: 14px; flex-wrap: wrap; justify-content: center; }
+#codexTabs button.mini { background: transparent; color: rgba(255, 255, 255, .6); border: 1px solid rgba(255, 255, 255, .22); }
+#codexTabs button.mini.on { border-color: var(--cyan); color: #fff; background: rgba(79, 240, 255, .18); }
+#codexCount { margin-left: 8px; font-family: var(--font-num); font-size: 13px; }
+#codexList { width: min(980px, 92vw); max-height: 58vh; overflow-y: auto; margin-bottom: 18px; }
+.cgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; }
+.centry { --cc: var(--cyan); text-align: left; padding: 10px 12px; background: var(--panel); border-left: 3px solid var(--cc); font-size: 13px; line-height: 1.5; }
+.centry b { display: flex; align-items: center; gap: 6px; font-size: 15px; color: #fff; margin-bottom: 2px; }
+.centry .dot { width: 9px; height: 9px; background: var(--cc); box-shadow: 0 0 8px var(--cc); transform: rotate(45deg); flex: none; }
+.centry .cicon { width: 24px; height: 16px; color: var(--cc); display: inline-flex; }
+.centry .cicon svg { width: 100%; height: 100%; }
+.centry .cstat { font-family: var(--font-num); font-size: 11px; opacity: .65; margin-top: 3px; }
+.centry .ctag { font-size: 10px; padding: 0 5px; border: 1px solid currentColor; opacity: .75; font-weight: 400; }
+.centry.common { --cc: #9fb3c8; }
+.centry.rare { --cc: #4f9dff; }
+.centry.legendary { --cc: var(--gold); }
+.centry.unknown { --cc: rgba(255, 255, 255, .15); opacity: .5; }
+.totals { display: flex; gap: 22px; justify-content: center; flex-wrap: wrap; margin-bottom: 12px; font-size: 14px; }
+.totals b { font-family: var(--font-num); color: #fff; margin-left: 4px; }
+table.history { width: 100%; border-collapse: collapse; font-size: 13px; }
+table.history th { text-align: left; font-weight: 400; opacity: .55; padding: 4px 8px; border-bottom: 1px solid rgba(255, 255, 255, .15); }
+table.history td { padding: 5px 8px; border-bottom: 1px solid rgba(255, 255, 255, .06); font-family: var(--font-num); }
+table.history tr.won td { color: var(--gold); }
+
+/* touch controls (shown once a touch is detected) */
+#touchUI { display: none; }
+body.touch.playing #touchUI { display: block; }
+body.touch #cross { display: none; }
+#touchUI button { position: fixed; z-index: 5; border-radius: 50%; border: 1px solid rgba(79, 240, 255, .55); background: rgba(8, 14, 28, .55);
+  color: #fff; font-family: inherit; font-size: 13px; letter-spacing: 1px; touch-action: none; user-select: none; -webkit-user-select: none; }
+#touchUI button:active { background: rgba(79, 240, 255, .3); }
+#touchUI .tdash { right: 20px; bottom: 26px; width: 78px; height: 78px; font-size: 15px; border-color: var(--cyan); }
+#touchUI .tskill { right: 30px; bottom: 116px; width: 58px; height: 58px; border-color: var(--gold); }
+#touchUI .tswap { right: 112px; bottom: 96px; width: 50px; height: 50px; }
+#touchUI .tuse { right: 112px; bottom: 30px; width: 50px; height: 50px; font-size: 12px; }
+#touchUI .tpause { top: 12px; left: 50%; transform: translateX(-50%); width: 44px; height: 44px; font-size: 12px; border-radius: 4px; }
+.tstick { position: fixed; z-index: 4; width: 112px; height: 112px; margin: -56px 0 0 -56px; border-radius: 50%; pointer-events: none;
+  border: 1px solid rgba(79, 240, 255, .4); background: rgba(79, 240, 255, .06); }
+.tstick.aim { border-color: rgba(255, 77, 210, .45); background: rgba(255, 77, 210, .06); }
+.tstick .knob { position: absolute; left: 50%; top: 50%; width: 46px; height: 46px; margin: -23px 0 0 -23px; border-radius: 50%;
+  background: rgba(79, 240, 255, .35); box-shadow: 0 0 12px rgba(79, 240, 255, .6); }
+.tstick.aim .knob { background: rgba(255, 77, 210, .35); box-shadow: 0 0 12px rgba(255, 77, 210, .6); }
+#rotateHint { display: none; position: fixed; left: 50%; top: 10px; transform: translateX(-50%); z-index: 9; padding: 4px 12px; font-size: 13px;
+  background: var(--panel); border: 1px solid rgba(79, 240, 255, .4); pointer-events: none; }
+@media (orientation: portrait) { body.touch #rotateHint { display: block; } }
+button { touch-action: manipulation; }
+canvas { touch-action: none; }
+
+/* small screens (phones) */
+@media (pointer: coarse), (max-height: 520px) {
+  .overlay { justify-content: flex-start; overflow-y: auto; padding: 18px 12px; }
+  .overlay h1 { font-size: 38px; letter-spacing: 5px; }
+  .overlay h2 { font-size: 22px; margin-bottom: 10px; }
+  .overlay .sub { font-size: 13px; margin-bottom: 12px; }
+  #titleScreen .controls, #titleScreen .tips { display: none; }
+  button.go { font-size: 13px; padding: 10px 18px; letter-spacing: 3px; }
+  button.go.alt { font-size: 12px; padding: 10px 16px; }
+  .hpanel { transform: scale(.78); }
+  #tl { transform-origin: top left; }
+  #tr { transform-origin: top right; }
+  #weapons { transform: translateX(-50%) scale(.8); transform-origin: bottom center; }
+  #buffs { display: none; }
+  #toast { font-size: 18px; letter-spacing: 3px; }
+  #hint { font-size: 12px; bottom: 96px; }
+  #cards { flex-wrap: wrap; }
+  #codexList { max-height: none; }
+}
+
+#langBtn { position: absolute; top: 16px; right: 18px; padding: 5px 12px; font-family: var(--font-num); letter-spacing: 2px; }

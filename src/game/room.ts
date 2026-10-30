@@ -6,6 +6,7 @@ import { BALANCE } from '../data/balance';
 import { ENEMIES, SPAWN_TABLE, bossFor, type EnemyKind } from '../data/enemies';
 import { CHALLENGE_TIME, ROOM_INFO, type RoomKind } from '../data/map';
 import { MODS } from '../data/depth';
+import { t } from '../core/i18n';
 
 export interface AABB {
   x0: number;
@@ -81,8 +82,8 @@ export class Room {
 
   get label(): string {
     const name = ROOM_INFO[this.kind].name;
-    if (this.kind === 'challenge' && !this.cleared) return `${name} · 剩余 ${Math.ceil(Math.max(0, this.challengeT))}s`;
-    if (this.waves.length > 1 && !this.cleared) return `${name} · 波次 ${Math.min(this.wave + 1, this.waves.length)}/${this.waves.length}`;
+    if (this.kind === 'challenge' && !this.cleared) return `${name} · ${t('剩余 {n}s', { n: Math.ceil(Math.max(0, this.challengeT)) })}`;
+    if (this.waves.length > 1 && !this.cleared) return `${name} · ${t('波次 {a}/{b}', { a: Math.min(this.wave + 1, this.waves.length), b: this.waves.length })}`;
     return name;
   }
 

@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { $ } from './dom';
+import { t } from '../core/i18n';
 
 export type FloaterKind = 'dmg' | 'crit' | 'dot' | 'heal' | 'coin' | 'word';
 
@@ -116,7 +117,7 @@ export class Floaters {
   private format(kind: FloaterKind, value: number): string {
     const n = Math.max(1, Math.round(value));
     if (kind === 'heal') return `+${n}`;
-    if (kind === 'coin') return `+${n} 碎片`;
+    if (kind === 'coin') return t('+{n} 碎片', { n });
     return kind === 'crit' ? `${n}!` : String(n);
   }
 
