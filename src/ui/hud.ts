@@ -11,6 +11,8 @@ export interface HudStats {
   shield: number;
   dashReady: number;      // 0..1
   reload: number;         // 0..1 for the active weapon
+  skillReady: number;     // 0..1
+  skillActive: boolean;
   room: number;
   roomLabel: string;
   score: number;
@@ -28,6 +30,8 @@ export class Hud {
   private readonly hpText = $('hpText');
   private readonly shieldPip = $('shieldPip');
   private readonly dashFill = $('dashFill');
+  private readonly skillFill = $('skillFill');
+  private readonly skillName = $('skillName');
   private readonly roomN = $('roomN');
   private readonly roomLabel = $('roomLabel');
   private readonly score = $('score');
@@ -62,6 +66,9 @@ export class Hud {
     this.shieldPip.classList.toggle('hidden', s.shield <= 0);
     this.vignette.classList.toggle('low', s.hp > 0 && s.hp < s.maxHp * 0.3);
     this.dashFill.style.width = `${clamp(s.dashReady, 0, 1) * 100}%`;
+    this.skillFill.style.width = `${clamp(s.skillReady, 0, 1) * 100}%`;
+    this.skillFill.classList.toggle('active', s.skillActive);
+    this.skillFill.classList.toggle('ready', s.skillReady >= 1);
     if (this.reloadFill) this.reloadFill.style.width = `${clamp(s.reload, 0, 1) * 100}%`;
     this.roomN.textContent = String(s.room).padStart(2, '0');
     this.roomLabel.textContent = s.roomLabel;
@@ -97,6 +104,10 @@ export class Hud {
     }
     this.weapons.innerHTML = html.join('');
     this.reloadFill = this.weapons.querySelector('.slot.on .reload > div');
+  }
+
+  setSkill(name: string): void {
+    this.skillName.textContent = name;
   }
 
   setBuffs(names: string[]): void {

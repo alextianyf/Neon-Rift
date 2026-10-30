@@ -7,6 +7,7 @@ import type { UpgradeDef } from '../data/upgrades';
 import { MAX_WEAPON_SLOTS, STARTING_WEAPON, WEAPONS, weaponLevelMul, type WeaponDef, type WeaponId } from '../data/weapons';
 import type { Game } from './game';
 import { MechModel } from './mech';
+import { MECHS, type MechDef, type TalentId } from '../data/meta';
 
 const P = BALANCE.player;
 const raycaster = new THREE.Raycaster();
@@ -41,7 +42,11 @@ export class Player {
   readonly r = P.radius;
   private readonly ring: THREE.Mesh<THREE.RingGeometry, THREE.MeshBasicMaterial>;
   private readonly shieldBubble: THREE.Mesh<THREE.SphereGeometry, THREE.MeshBasicMaterial>;
-  private readonly mech = new MechModel();
+  private mech = new MechModel();
+  mechDef: MechDef = MECHS.vanguard;
+  skillCd = 0;
+  skillT = 0;          // remaining time of the active skill effect
+  revives = 0;
   private nextArm: 0 | 1 = 0;
   private faceYaw = 0;  // body yaw as drawn; see screenFacing()
 
@@ -102,13 +107,13 @@ export class Player {
     this.reset();
   }
 
-  reset(): void {
+  // Start a run with the chosen mech and permanent talents.
+  reset(mech: MechDef = MECHS.vanguard, talents: Partial<Record<TalentId, number>> = {}): void {
+    if (mech !== this.mechDef) this.setMech(mech);
     this.pos.set(0, 0, 0);
     this.vel.set(0, 0, 0);
     this.aim.set(0, 0, -1);
     this.dashDir.set(0, 0, -1);
-    this.hp = this.maxHp = P.hp;
-    this.speed = P.speed;
     this.dashCd = this.dashT = this.invuln = this.fireCd = 0;
     this.coins = 0;
     this.slots = [{ id: STARTING_WEAPON, level: 1 }];
@@ -127,7 +132,81 @@ export class Player {
     this.chainExtra = 0;
     this.mesh.visible = true;
     this.mesh.rotation.set(0, 0, 0);  // the title screen spins the model; facing is handled by the mech itself
+    this.skillCd = this.skillT = 0;
+
+    // mech base stats, then talents on top
+    const t = (id: TalentId) => talents[id] ?? 0;
+    this.hp = this.maxHp = mech.hp + t('armor') * 10;
+    this.speed = mech.speed;
+    this.dashCdMul = mech.dashCdMul * (1 - t('thrusters') * 0.06);
+    this.dmgMul = mech.dmgMul * (1 + t('firepower') * 0.05);
+    this.critChance += mech.critBonus;
+    this.coinMul = 1 + t('salvage') * 0.1;
+    this.coins = t('funding') * 15;
+    this.shieldMax = this.shield = mech.shield;
+    this.revives = t('revive');
     this.updateGunColor();
+  }
+
+  setMech(def: MechDef): void {
+    this.mesh.remove(this.mech.root);
+    this.mech = new MechModel(def.palette, def.scale);
+    this.mesh.add(this.mech.root);
+    this.mechDef = def;
+    this.updateGunColor();
+  }
+
+  get skillReady(): number {
+    return 1 - Math.max(0, this.skillCd) / this.mechDef.skillCd;
+  }
+
+  // Mech-specific active skill (F key / gamepad Y).
+  trySkill(g: Game): void {
+    if (this.skillCd > 0) return;
+    const def = this.mechDef;
+    this.skillCd = def.skillCd;
+    if (def.skill === 'overdrive') {
+      this.skillT = 5;
+      sfx.levelUp();
+      g.hud.toast('过载射击');
+    } else if (def.skill === 'barrier') {
+      this.skillT = 3;
+      this.invuln = Math.max(this.invuln, 3);
+      g.projectiles.clearEnemyBulletsNear(this.pos, 6);
+      g.fx.shockwave(this.pos.x, this.pos.z, 6, 0x66ccff);
+      sfx.shieldBlock();
+    } else {
+      this.blink(g);
+    }
+  }
+
+  get overdrive(): boolean {
+    return this.mechDef.skill === 'overdrive' && this.skillT > 0;
+  }
+
+  // Phantom skill: dash-teleport toward the aim, shredding enemies along the path.
+  private blink(g: Game): void {
+    const start = this.pos.clone();
+    let dist = 0;
+    for (let d = 0.25; d <= 7; d += 0.25) {
+      if (g.room.blocked(start.x + this.aim.x * d, start.z + this.aim.z * d, this.r)) break;
+      dist = d;
+    }
+    const end = start.clone().addScaledVector(this.aim, dist);
+    const abx = end.x - start.x, abz = end.z - start.z, len2 = abx * abx + abz * abz || 1;
+    for (const e of [...g.enemies.list]) {
+      const t = Math.max(0, Math.min(1, ((e.pos.x - start.x) * abx + (e.pos.z - start.z) * abz) / len2));
+      if (Math.hypot(e.pos.x - (start.x + abx * t), e.pos.z - (start.z + abz * t)) < e.r + 0.7) {
+        g.enemies.damage(e, 60 * this.dmgMul, { dir: this.aim.clone(), knock: 8 });
+      }
+    }
+    g.fx.burst({ x: start.x, y: 1, z: start.z }, this.mechDef.palette.accent, 16, 6, 0.2, 0.4);
+    g.fx.lightning({ x: start.x, y: 1, z: start.z }, { x: end.x, y: 1, z: end.z }, this.mechDef.palette.accent);
+    this.pos.copy(end);
+    this.invuln = Math.max(this.invuln, 0.5);
+    g.fx.burst({ x: end.x, y: 1, z: end.z }, this.mechDef.palette.accent, 16, 6, 0.2, 0.4);
+    sfx.dash();
+    sfx.zap();
   }
 
   get dashCooldown(): number {
@@ -143,7 +222,7 @@ export class Player {
   }
 
   get fireRateMul(): number {
-    return this.rateMul * (this.frenzy && this.hp < this.maxHp * 0.5 ? 1.5 : 1);
+    return this.rateMul * (this.frenzy && this.hp < this.maxHp * 0.5 ? 1.5 : 1) * (this.overdrive ? 1.6 : 1);
   }
 
   // 0..1, how far the current weapon's cooldown has recovered
@@ -221,6 +300,11 @@ export class Player {
     this.dashCd -= dt;
     this.invuln -= dt;
     this.fireCd -= dt;
+    this.skillCd -= dt;
+    this.skillT -= dt;
+    if (this.overdrive && Math.random() < dt * 20) {
+      g.fx.burst({ x: this.pos.x, y: 1.4, z: this.pos.z }, this.mechDef.palette.accent, 1, 2, 0.12, 0.3);
+    }
 
     if (this.dashT > 0) {
       this.dashT -= dt;
@@ -244,7 +328,7 @@ export class Player {
     // blink while invulnerable after taking a hit
     this.mesh.visible = !(this.invuln > 0 && this.dashT <= 0 && Math.floor(g.time * 20) % 2 === 0);
     this.ring.material.opacity = this.dashCd <= 0 ? 0.45 : 0.1;
-    this.shieldBubble.visible = this.shield > 0;
+    this.shieldBubble.visible = this.shield > 0 || (this.mechDef.skill === 'barrier' && this.skillT > 0);
     this.shieldBubble.material.opacity = 0.14 + Math.sin(g.time * 4) * 0.05;
     g.gfx.playerLight.position.set(this.pos.x, 3.5, this.pos.z + 1);
   }
@@ -265,7 +349,7 @@ export class Player {
     const dx = aimPoint.x - muzzle.x, dz = aimPoint.z - muzzle.z;
     const base = dx * this.aim.x + dz * this.aim.z > 0.5 ? Math.atan2(dx, dz) : yaw;
     const shot = {
-      dmg: w.dmg * this.dmgMul * weaponLevelMul(this.activeSlot.level),
+      dmg: w.dmg * this.dmgMul * weaponLevelMul(this.activeSlot.level) * (this.overdrive ? 1.2 : 1),
       pierce: (w.pierce ?? 0) + this.pierce,
       bounce: (w.bounce ?? 0) + this.bounce,
       blast: w.blast ? w.blast * this.blastMul : 0,

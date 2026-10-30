@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { disposeTree, glowMat } from '../core/assets';
 import { sfx } from '../core/audio';
 import { rand } from '../core/math';
+import { rnd, rrand } from '../core/rng';
 import { BALANCE } from '../data/balance';
 import { isCombatKind } from '../data/map';
 import type { AABB } from './room';
@@ -112,14 +113,14 @@ export class Hazards {
     const room = this.g.room, n = room.n;
     if (!isCombatKind(room.kind) || n < H.fromRoom) return;
 
-    const types: HazardType[] = (['sludge', 'acid', 'barrel', 'grid', 'cover'] as HazardType[]).sort(() => Math.random() - 0.5);
+    const types: HazardType[] = (['sludge', 'acid', 'barrel', 'grid', 'cover'] as HazardType[]).sort(() => rnd() - 0.5);
     const chosen = types.slice(0, n >= H.twoTypesFromRoom ? 2 : 1);
     const scale = (room.hw * room.hh) / (18 * 12);
     for (const type of chosen) {
       if (type === 'grid') {
         for (let i = 0, count = Math.max(1, Math.round(2 * scale)); i < count; i++) this.tryAddGrid();
       } else if (type === 'cover') {
-        for (let i = 0, count = Math.round((4 + Math.random() * 3) * scale); i < count; i++) {
+        for (let i = 0, count = Math.round((4 + rnd() * 3) * scale); i < count; i++) {
           const spot = this.findSpot(1.2);
           if (spot) this.addCover(spot[0], spot[1]);
         }
@@ -127,20 +128,20 @@ export class Hazards {
         for (let c = 0, clusters = Math.round(3 * scale); c < clusters; c++) {
           const spot = this.findSpot(1.6);
           if (!spot) continue;
-          for (let i = 0, k = 2 + Math.floor(Math.random() * 2); i < k; i++) {
-            const x = spot[0] + rand(-1, 1), z = spot[1] + rand(-1, 1);
+          for (let i = 0, k = 2 + Math.floor(rnd() * 2); i < k; i++) {
+            const x = spot[0] + rrand(-1, 1), z = spot[1] + rrand(-1, 1);
             if (!room.blocked(x, z, 0.5)) this.addBarrel(x, z);
           }
         }
       } else {
-        for (let i = 0, count = Math.max(1, Math.round((2 + Math.random()) * scale)); i < count; i++) {
-          const r = type === 'sludge' ? rand(2.5, 3.8) : rand(1.8, 2.6);
+        for (let i = 0, count = Math.max(1, Math.round((2 + rnd()) * scale)); i < count; i++) {
+          const r = type === 'sludge' ? rrand(2.5, 3.8) : rrand(1.8, 2.6);
           const spot = this.findSpot(r);
           if (spot) this.addZone(type, spot[0], spot[1], r);
         }
       }
     }
-    if (n >= H.riftFromRoom && Math.random() < H.riftChance) {
+    if (n >= H.riftFromRoom && rnd() < H.riftChance) {
       const spot = this.findSpot(1.5);
       if (spot) this.addRift(spot[0], spot[1]);
     }
@@ -276,7 +277,7 @@ export class Hazards {
   private findSpot(r: number): [number, number] | null {
     const room = this.g.room;
     for (let i = 0; i < 60; i++) {
-      const x = rand(-room.hw + r + 1, room.hw - r - 1), z = rand(-room.hh + r + 1, room.hh - r - 1);
+      const x = rrand(-room.hw + r + 1, room.hw - r - 1), z = rrand(-room.hh + r + 1, room.hh - r - 1);
       if (!room.isFree(x, z, r * 0.6)) continue;
       const clash = [...this.zones, ...this.rifts, ...this.barrels, ...this.grids, ...this.covers].some(h =>
         Math.hypot(h.x - x, h.z - z) < r + ('r' in h ? h.r : 1.5) + 1);
@@ -342,7 +343,7 @@ export class Hazards {
     for (let i = 0; i < 40; i++) {
       const spot = this.findSpot(1.2);
       if (!spot) return;
-      const len = rand(5, 9), ang = Math.random() * Math.PI;
+      const len = rrand(5, 9), ang = rnd() * Math.PI;
       const dx = Math.cos(ang) * len / 2, dz = Math.sin(ang) * len / 2;
       const a = new THREE.Vector3(spot[0] - dx, 0, spot[1] - dz), b = new THREE.Vector3(spot[0] + dx, 0, spot[1] + dz);
       // the whole line must be walkable and away from the hub and entry
@@ -377,7 +378,7 @@ export class Hazards {
     beam.rotation.y = Math.atan2(b.x - a.x, b.z - a.z);
     group.add(beam);
     g.gfx.scene.add(group);
-    this.grids.push({ x: beam.position.x, z: beam.position.z, a, b, phase: 'off', timer: rand(0.5, 2.5), tick: 0, group, beam, pylons });
+    this.grids.push({ x: beam.position.x, z: beam.position.z, a, b, phase: 'off', timer: rrand(0.5, 2.5), tick: 0, group, beam, pylons });
   }
 
   private updateGrid(gr: Grid, dt: number): void {
@@ -411,8 +412,8 @@ export class Hazards {
   private addCover(x: number, z: number): void {
     const group = new THREE.Group();
     group.position.set(x, 0, z);
-    const w = rand(1.2, 1.8), d = rand(0.6, 1.0), h = 1.1;
-    const [sx, sz] = Math.random() < 0.5 ? [d, w] : [w, d];
+    const w = rrand(1.2, 1.8), d = rrand(0.6, 1.0), h = 1.1;
+    const [sx, sz] = rnd() < 0.5 ? [d, w] : [w, d];
     const geo = new THREE.BoxGeometry(sx, h, sz);
     const body = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color: 0x1b2135, metalness: 0.3, roughness: 0.6, emissive: 0x0a1020 }));
     body.position.y = h / 2;

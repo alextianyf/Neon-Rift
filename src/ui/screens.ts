@@ -1,9 +1,11 @@
+import { MECHS, TALENTS, type MechId, type TalentId } from '../data/meta';
 import { RARITY_LABEL, type UpgradeDef } from '../data/upgrades';
+import { talentLevel, type Profile } from './profile';
 import { $ } from './dom';
 import type { Settings } from './settings';
 
-export type OverlayId = 'titleScreen' | 'upgradeScreen' | 'pauseScreen' | 'deadScreen';
-const OVERLAYS: OverlayId[] = ['titleScreen', 'upgradeScreen', 'pauseScreen', 'deadScreen'];
+export type OverlayId = 'titleScreen' | 'upgradeScreen' | 'pauseScreen' | 'deadScreen' | 'hangarScreen';
+const OVERLAYS: OverlayId[] = ['titleScreen', 'upgradeScreen', 'pauseScreen', 'deadScreen', 'hangarScreen'];
 
 export interface RunSummary {
   room: number;
@@ -13,6 +15,14 @@ export interface RunSummary {
   bestCombo: number;
   isNewBest: boolean;
   buffs: string[];
+  crystals: number;
+  daily: boolean;
+}
+
+export interface HangarActions {
+  unlock(id: MechId): void;
+  select(id: MechId): void;
+  buy(id: TalentId): void;
 }
 
 export interface StatLine {
@@ -85,6 +95,51 @@ export class Screens {
     nums.addEventListener('change', emit);
   }
 
+  showTitleInfo(crystals: number, mechName: string, dailyBest: number | null, today: string): void {
+    $('titleCrystals').textContent = String(crystals);
+    $('titleMech').textContent = mechName;
+    $('titleDaily').textContent = dailyBest !== null ? `今日挑战（${today}）最佳：${dailyBest}` : `今日挑战（${today}）：尚未挑战`;
+  }
+
+  showHangar(profile: Profile, act: HangarActions): void {
+    $('hangarCrystals').textContent = String(profile.crystals);
+    const mechList = $('mechList');
+    mechList.innerHTML = '';
+    for (const def of Object.values(MECHS)) {
+      const owned = profile.mechs.includes(def.id), selected = profile.selected === def.id;
+      const accent = `#${def.palette.accent.toString(16).padStart(6, '0')}`;
+      const row = document.createElement('div');
+      row.className = `mechrow${selected ? ' selected' : ''}`;
+      row.style.setProperty('--mc', accent);
+      row.innerHTML =
+        `<div class="mhead"><b>${def.name}</b><span class="dim">${def.desc}</span></div>` +
+        `<div class="mstats">生命 ${def.hp} · 速度 ${def.speed} · 冲刺冷却 ×${def.dashCdMul}${def.critBonus ? ` · 暴击 +${def.critBonus * 100}%` : ''}${def.shield ? ` · 每扇区护盾 ${def.shield}` : ''}</div>` +
+        `<div class="mskill">技能 [F] <b>${def.skillName}</b>：${def.skillDesc}（冷却 ${def.skillCd}s）</div>`;
+      const btn = document.createElement('button');
+      btn.className = 'mini';
+      if (selected) { btn.textContent = '已选择'; btn.disabled = true; }
+      else if (owned) { btn.textContent = '选择'; btn.onclick = () => act.select(def.id); }
+      else { btn.textContent = `解锁 · ${def.cost} 结晶`; btn.disabled = profile.crystals < def.cost; btn.onclick = () => act.unlock(def.id); }
+      row.appendChild(btn);
+      mechList.appendChild(row);
+    }
+    const talentList = $('talentList');
+    talentList.innerHTML = '';
+    for (const t of TALENTS) {
+      const lvl = talentLevel(profile, t.id), maxed = lvl >= t.max;
+      const row = document.createElement('div');
+      row.className = 'talentrow';
+      const pips = Array.from({ length: t.max }, (_, i) => `<i class="${i < lvl ? 'on' : ''}"></i>`).join('');
+      row.innerHTML = `<div><b>${t.name}</b> <span class="pips">${pips}</span><div class="dim">${t.desc(Math.max(lvl, 1))}</div></div>`;
+      const btn = document.createElement('button');
+      btn.className = 'mini';
+      if (maxed) { btn.textContent = '已满级'; btn.disabled = true; }
+      else { const c = t.cost(lvl); btn.textContent = `${c} 结晶`; btn.disabled = profile.crystals < c; btn.onclick = () => act.buy(t.id); }
+      row.appendChild(btn);
+      talentList.appendChild(row);
+    }
+  }
+
   showGameOver(run: RunSummary): void {
     $('deadStats').innerHTML =
       `<div class="statgrid">` +
@@ -94,6 +149,7 @@ export class Screens {
       `<div><span>最高连杀</span><b>${run.bestCombo}</b></div>` +
       `<div><span>获得碎片</span><b>${run.coins}</b></div>` +
       `</div>` +
+      `<div class="crystalgain">+${run.crystals} 裂隙结晶${run.daily ? ' · 每日挑战' : ''}</div>` +
       (run.isNewBest ? '<div class="newbest">★ 新纪录</div>' : '') +
       `<div class="dim">模块：${run.buffs.join('、') || '无'}</div>`;
     this.toggle('deadScreen', true);

@@ -1,3 +1,5 @@
+import { rnd } from '../core/rng';
+
 // Sector types and how the branching path between sectors is rolled.
 export type RoomKind = 'combat' | 'elite' | 'treasure' | 'challenge' | 'shop' | 'boss';
 
@@ -32,7 +34,7 @@ export function rollPaths(nextN: number, current: RoomKind): RoomKind[] {
   if (nextN >= 2 && current !== 'shop') pool.push(['shop', beforeBoss ? 45 : 15]);
   const picks: RoomKind[] = [];
   while (picks.length < 2 && pool.length) {
-    let r = Math.random() * pool.reduce((s, [, w]) => s + w, 0);
+    let r = rnd() * pool.reduce((s, [, w]) => s + w, 0);
     const i = pool.findIndex(([, w]) => (r -= w) <= 0);
     picks.push(pool[i][0]);
     pool.splice(i, 1);

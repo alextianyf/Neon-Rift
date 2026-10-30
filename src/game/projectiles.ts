@@ -101,6 +101,16 @@ export class Projectiles {
     this.updateEnemyBullets(dt);
   }
 
+  clearEnemyBulletsNear(pos: THREE.Vector3, radius: number): void {
+    for (let i = this.enemyBullets.length - 1; i >= 0; i--) {
+      const b = this.enemyBullets[i], p = b.mesh.position;
+      if (Math.hypot(p.x - pos.x, p.z - pos.z) > radius) continue;
+      this.g.fx.burst(p, 0x66ccff, 2, 3, 0.1, 0.2);
+      this.g.gfx.scene.remove(b.mesh);
+      this.enemyBullets.splice(i, 1);
+    }
+  }
+
   clearEnemyBullets(): void {
     for (const b of this.enemyBullets) this.g.gfx.scene.remove(b.mesh);
     this.enemyBullets.length = 0;

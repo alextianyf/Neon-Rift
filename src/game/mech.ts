@@ -1,16 +1,22 @@
 import * as THREE from 'three';
 import { glowMat } from '../core/assets';
 import { clamp } from '../core/math';
+import { MECHS, type MechPalette } from '../data/meta';
 
-// Gunmetal armor with lighter top plates so the silhouette reads from above; cyan lights mark the player.
-const ARMOR = new THREE.MeshStandardMaterial({ color: 0x8e99ad, metalness: 0.35, roughness: 0.5, emissive: 0x141c2a, emissiveIntensity: 0.5, flatShading: true });
-const ARMOR_TOP = new THREE.MeshStandardMaterial({ color: 0xa4adbc, metalness: 0.25, roughness: 0.55, emissive: 0x1b2433, emissiveIntensity: 0.5, flatShading: true });
 const FRAME = new THREE.MeshStandardMaterial({ color: 0x252a35, metalness: 0.6, roughness: 0.45, emissive: 0x080b12, emissiveIntensity: 0.5, flatShading: true });
-const PAINT = new THREE.MeshStandardMaterial({ color: 0xff7a1a, metalness: 0.2, roughness: 0.5, emissive: 0x3a1400, emissiveIntensity: 0.6, flatShading: true });
-const CYAN = 0x4ff0ff;
 const SHADOW = new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.55, depthWrite: false });
 
-const SCALE = 1.3;
+// Two-tone armor with lighter top plates so the silhouette reads from above; the accent lights
+// mark the player. Each mech type has its own palette.
+function paletteMaterials(p: MechPalette) {
+  return {
+    ARMOR: new THREE.MeshStandardMaterial({ color: p.armor, metalness: 0.35, roughness: 0.5, emissive: 0x141c2a, emissiveIntensity: 0.5, flatShading: true }),
+    ARMOR_TOP: new THREE.MeshStandardMaterial({ color: p.armorTop, metalness: 0.25, roughness: 0.55, emissive: 0x1b2433, emissiveIntensity: 0.5, flatShading: true }),
+    PAINT: new THREE.MeshStandardMaterial({ color: p.paint, metalness: 0.2, roughness: 0.5, emissive: new THREE.Color(p.paint).multiplyScalar(0.2), emissiveIntensity: 0.6, flatShading: true }),
+    CYAN: p.accent,
+  };
+}
+
 // Cannon muzzle in unscaled model space (right arm; the left arm mirrors x).
 const MUZZLE = new THREE.Vector3(0.62, 1.12, 1.14);
 
@@ -69,7 +75,11 @@ export class MechModel {
   private legYaw = 0;
   private t = 0;
 
-  constructor() {
+  private readonly scale: number;
+
+  constructor(palette: MechPalette = MECHS.vanguard.palette, scale = MECHS.vanguard.scale) {
+    this.scale = scale;
+    const { ARMOR, ARMOR_TOP, PAINT, CYAN } = paletteMaterials(palette);
     const cyan = glowMat(CYAN, 1.6);
 
     const shadow = new THREE.Mesh(new THREE.CircleGeometry(1.0, 24), SHADOW);
@@ -162,7 +172,7 @@ export class MechModel {
     this.upper.rotation.order = 'YXZ';
     this.root.add(this.lower, this.upper);
     // drawn larger than the 0.55 hitbox so the silhouette reads from the top-down camera
-    this.root.scale.setScalar(SCALE);
+    this.root.scale.setScalar(scale);
   }
 
   setWeaponColor(hex: number): void {
@@ -174,9 +184,10 @@ export class MechModel {
 
   // World position of a cannon's muzzle (0 = right, 1 = left) for a given body position and aim yaw.
   muzzle(side: 0 | 1, pos: THREE.Vector3, yaw: number, out: THREE.Vector3): THREE.Vector3 {
-    const x = (side === 0 ? MUZZLE.x : -MUZZLE.x) * SCALE, z = MUZZLE.z * SCALE;
+    const S = this.scale;
+    const x = (side === 0 ? MUZZLE.x : -MUZZLE.x) * S, z = MUZZLE.z * S;
     const c = Math.cos(yaw), s = Math.sin(yaw);
-    return out.set(pos.x + x * c + z * s, MUZZLE.y * SCALE, pos.z - x * s + z * c);
+    return out.set(pos.x + x * c + z * s, MUZZLE.y * S, pos.z - x * s + z * c);
   }
 
   kick(side: 0 | 1): void {

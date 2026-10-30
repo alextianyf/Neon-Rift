@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { GEO, disposeTree, glowMat, markShared } from '../core/assets';
 import { sfx } from '../core/audio';
-import { shuffled } from '../core/math';
+import { shuffledR } from '../core/rng';
 import { BALANCE } from '../data/balance';
 import { RARITY_LABEL, RARITY_PRICE, ROLL_WEIGHTS, rollUpgrades, type UpgradeDef } from '../data/upgrades';
 import { STARTING_WEAPON, WEAPONS, type WeaponId } from '../data/weapons';
@@ -185,7 +185,7 @@ export class Interactables {
   private randomWeapon(exclude: WeaponId[]): WeaponId {
     const all = (Object.keys(WEAPONS) as WeaponId[]).filter(id => id !== STARTING_WEAPON && !exclude.includes(id));
     const fresh = all.filter(id => !this.g.player.owns(id));
-    return shuffled(fresh.length ? fresh : all)[0];
+    return shuffledR(fresh.length ? fresh : all)[0];
   }
 
   private remove(it: Item): void {

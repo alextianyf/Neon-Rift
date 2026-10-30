@@ -20,6 +20,8 @@
     <div class="hrow num" id="hpText"></div>
     <div class="hrow"><span class="lbl">BOOST</span><span class="cn">推进器</span></div>
     <div class="seg thin"><div id="dashFill"></div></div>
+    <div class="hrow skillrow"><span class="lbl">SKILL</span><span class="cn" id="skillName"></span><kbd class="skey">F</kbd></div>
+    <div class="seg thin"><div id="skillFill"></div></div>
   </div>
   <div id="tr" class="hpanel right">
     <div class="sector"><span class="lbl">SECTOR</span><b id="roomN">01</b></div>
@@ -49,10 +51,20 @@
     <kbd>空格 / 右键</kbd><span>推进冲刺（无敌帧）</span>
     <kbd>1 2 3 / Q / 滚轮</kbd><span>切换武装</span>
     <kbd>E</kbd><span>拾取武装 / 终端交易</span>
+    <kbd>F</kbd><span>机体技能（各机体不同）</span>
     <kbd>Esc / P</kbd><span>暂停（机体数据与设置）</span>
   </div>
   <div class="tips">每 5 个扇区一个裂隙核心 · 第 3、8、13… 扇区是黑市终端 · 重复拾取同一武装会升级</div>
-  <button class="go" id="startBtn">启动机体</button>
+  <div class="titlebar">
+    <span>机体：<b id="titleMech">先锋</b></span>
+    <span>裂隙结晶：<b id="titleCrystals" class="gold">0</b></span>
+    <span id="titleDaily" class="dim"></span>
+  </div>
+  <div class="titlebtns">
+    <button class="go" id="startBtn">启动机体</button>
+    <button class="go alt" id="dailyBtn">每日挑战</button>
+    <button class="go alt" id="hangarBtn">机库</button>
+  </div>
 </div>
 
 <div id="upgradeScreen" class="overlay hidden">
@@ -81,7 +93,21 @@
   <div class="kicker red">SIGNAL LOST</div>
   <h2 class="red">机体损毁</h2>
   <div class="stats" id="deadStats"></div>
-  <button class="go" id="restartBtn">重新部署</button>
+  <div class="titlebtns">
+    <button class="go" id="restartBtn">重新部署</button>
+    <button class="go alt" id="menuBtn">返回主菜单</button>
+  </div>
+</div>
+
+<div id="hangarScreen" class="overlay hidden">
+  <div class="kicker">HANGAR</div>
+  <h2>机库</h2>
+  <div class="hangarbar">裂隙结晶：<b id="hangarCrystals" class="gold">0</b><span class="dim">每局结束按分数、扇区与击败的首领获得</span></div>
+  <div class="hangargrid">
+    <div class="panel wide"><h3>机体</h3><div id="mechList"></div></div>
+    <div class="panel wide"><h3>永久天赋</h3><div id="talentList"></div></div>
+  </div>
+  <button class="go" id="hangarBack">返回</button>
 </div>
 
 <script type="module" src="/src/main.ts"></script>

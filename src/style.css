@@ -63,6 +63,34 @@ canvas { display: block; cursor: none; }
 .seg.tiny::after { display: none; }
 #hpFill { background: linear-gradient(90deg, #ff3366, #ff9a5c); box-shadow: 0 0 10px #ff3366; }
 #dashFill { background: var(--cyan); box-shadow: 0 0 8px var(--cyan); }
+#skillFill { background: #c77dff; }
+#skillFill.ready { background: var(--gold); box-shadow: 0 0 8px var(--gold); }
+#skillFill.active { background: #fff; box-shadow: 0 0 10px #fff; }
+.skillrow { margin-top: 6px; }
+.skey { margin-left: auto; font-family: var(--font-num); font-size: 10px; color: #05070d; background: var(--gold); padding: 0 5px; }
+
+/* title & hangar */
+.titlebar { display: flex; gap: 22px; justify-content: center; flex-wrap: wrap; font-size: 14px; margin-bottom: 16px; }
+.titlebar b { color: #fff; }
+.titlebtns { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+button.go.alt { border-color: rgba(255, 255, 255, .35); background: rgba(255, 255, 255, .04); text-shadow: none; font-size: 14px; padding: 13px 28px; }
+button.go.alt:hover { border-color: var(--cyan); }
+.hangarbar { display: flex; gap: 14px; align-items: baseline; justify-content: center; margin: -6px 0 16px; font-size: 15px; }
+.hangargrid { display: flex; gap: 16px; flex-wrap: wrap; justify-content: center; margin-bottom: 22px; max-width: 980px; }
+.panel.wide { width: 440px; max-width: 92vw; }
+.mechrow { --mc: var(--cyan); position: relative; padding: 10px 140px 10px 12px; margin-bottom: 8px; border: 1px solid rgba(255, 255, 255, .12); border-left: 3px solid var(--mc); background: rgba(255, 255, 255, .03); }
+.mechrow.selected { box-shadow: inset 0 0 18px color-mix(in srgb, var(--mc) 25%, transparent); border-color: var(--mc); }
+.mechrow .mhead { display: flex; gap: 10px; align-items: baseline; }
+.mechrow .mhead b { font-size: 17px; color: var(--mc); }
+.mechrow .mstats, .mechrow .mskill { font-size: 12px; opacity: .8; margin-top: 3px; }
+.mechrow .mskill b { color: #fff; }
+.mechrow button.mini { position: absolute; right: 10px; top: 10px; }
+.talentrow { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 7px 0; border-bottom: 1px solid rgba(255, 255, 255, .06); font-size: 14px; }
+.pips i { display: inline-block; width: 8px; height: 8px; margin-right: 3px; border: 1px solid var(--cyan); transform: skewX(-15deg); }
+.pips i.on { background: var(--cyan); box-shadow: 0 0 6px var(--cyan); }
+button.mini { font-family: var(--font-ui); font-size: 13px; font-weight: 700; color: #05070d; background: var(--gold); border: 0; padding: 5px 12px; cursor: pointer; clip-path: var(--notch); white-space: nowrap; }
+button.mini:disabled { background: rgba(255, 255, 255, .15); color: rgba(255, 255, 255, .5); cursor: default; }
+.crystalgain { font-family: var(--font-num); color: var(--gold); text-shadow: 0 0 10px rgba(255, 210, 63, .6); margin-bottom: 8px; }
 
 /* boss */
 #bossBar { position: absolute; left: 50%; top: 118px; transform: translateX(-50%); width: min(520px, 56vw); text-align: center; }

@@ -2,9 +2,11 @@ import * as THREE from 'three';
 import { initAudio, setVolume, sfx } from '../core/audio';
 import { Graphics } from '../core/graphics';
 import { Input } from '../core/input';
+import { rnd, seedFromString, seedRun, todayKey } from '../core/rng';
 import { BALANCE } from '../data/balance';
 import { ENEMIES } from '../data/enemies';
 import { ROOM_INFO, rollPaths, type RoomKind } from '../data/map';
+import { MECHS, TALENTS, crystalsFor, type MechId, type TalentId } from '../data/meta';
 import { ROLL_WEIGHTS, UPGRADES, rollUpgrades, type UpgradeDef } from '../data/upgrades';
 import { MAX_WEAPON_SLOTS } from '../data/weapons';
 import { Floaters, type Tag } from '../ui/floaters';
@@ -12,6 +14,7 @@ import { Hud } from '../ui/hud';
 import { Screens, type BuildEntry, type StatLine } from '../ui/screens';
 import { loadSettings, saveSettings, type Settings } from '../ui/settings';
 import { loadBest, saveBest } from '../ui/storage';
+import { loadProfile, saveProfile, talentLevel, type Profile } from '../ui/profile';
 import { Atmosphere } from './atmosphere';
 import { Effects } from './effects';
 import { Enemies, type Enemy } from './enemies';
@@ -58,12 +61,20 @@ export class Game {
   private upgradeChoices: UpgradeDef[] = [];
   private settings: Settings = loadSettings();
   private portalTags: Tag[] = [];
+  private profile: Profile = loadProfile();
+  private daily = false;
+  bossKills = 0;
   private challengeSpawnT = 0;
 
   constructor() {
     this.bindInput();
-    this.screens.onClick('startBtn', () => this.start());
-    this.screens.onClick('restartBtn', () => this.start());
+    this.screens.onClick('startBtn', () => this.start(false));
+    this.screens.onClick('dailyBtn', () => this.start(true));
+    this.screens.onClick('restartBtn', () => this.start(this.daily));
+    this.screens.onClick('hangarBtn', () => this.openHangar());
+    this.screens.onClick('hangarBack', () => this.closeHangar());
+    this.screens.onClick('menuBtn', () => this.toTitle());
+    this.refreshTitle();
     this.screens.onClick('resumeBtn', () => this.setPaused(false));
     this.screens.bindSettings(this.settings, s => this.applySettings(s));
     this.applySettings(this.settings);
@@ -71,6 +82,7 @@ export class Game {
     // backdrop for the title screen
     this.room.build(1, 'combat');
     this.atmosphere.build(this.room);
+    this.player.setMech(MECHS[this.profile.selected]);
     this.player.pos.set(0, 0, 3);
     this.player.mesh.position.copy(this.player.pos);
   }
@@ -97,10 +109,14 @@ export class Game {
     loop();
   }
 
-  start(): void {
+  start(daily: boolean): void {
     initAudio();
-    this.player.reset();
-    this.score = this.kills = this.coinsEarned = this.combo = this.bestCombo = 0;
+    this.daily = daily;
+    seedRun(daily ? seedFromString(`neon-rift:${todayKey()}`) : undefined);
+    const mech = MECHS[this.profile.selected];
+    this.player.reset(mech, this.profile.talents);
+    this.hud.setSkill(mech.skillName);
+    this.score = this.kills = this.coinsEarned = this.combo = this.bestCombo = this.bossKills = 0;
     this.comboT = 0;
     this.hud.setBuffs([]);
     this.hud.showBossBar(false);
@@ -125,7 +141,21 @@ export class Game {
   drainPlayer(amount: number): void {
     if (this.state !== 'play') return;
     this.player.hp -= amount;
-    if (this.player.hp <= 0) this.gameOver();
+    if (this.player.hp <= 0) this.onLethal();
+  }
+
+  // Out of HP: use the revive protocol if available, otherwise the run ends.
+  private onLethal(): void {
+    const p = this.player;
+    if (p.revives <= 0) { this.gameOver(); return; }
+    p.revives--;
+    p.hp = p.maxHp * 0.5;
+    p.invuln = 2;
+    this.projectiles.clearEnemyBulletsNear(p.pos, 8);
+    this.fx.burst({ x: p.pos.x, y: 1, z: p.pos.z }, 0x55ff99, 40, 10, 0.25, 0.8);
+    this.fx.shockwave(p.pos.x, p.pos.z, 6, 0x55ff99);
+    sfx.levelUp();
+    this.hud.toast('复苏协议启动');
   }
 
   damagePlayer(dmg: number, from: THREE.Vector3 | null): void {
@@ -152,7 +182,7 @@ export class Game {
     }
     this.fx.burst({ x: p.pos.x, y: 0.8, z: p.pos.z }, 0x4ff0ff, 12, 7);
     this.hud.hurtFlash();
-    if (p.hp <= 0) this.gameOver();
+    if (p.hp <= 0) this.onLethal();
   }
 
   onEnemyKilled(e: Enemy): void {
@@ -161,6 +191,7 @@ export class Game {
     this.combo++;
     this.comboT = C.window;
     this.bestCombo = Math.max(this.bestCombo, this.combo);
+    if (e.def.boss) this.bossKills++;
     const reward = e.elite ? BALANCE.elites.reward : 1;
     this.score += Math.round(e.def.score * reward * (1 + Math.min(C.maxBonus, this.combo * C.scorePerKill)));
     if (this.player.leech) {
@@ -195,6 +226,7 @@ export class Game {
           if (k === 'q') this.switchWeapon((this.player.weapon + 1) % this.player.slots.length);
           if (k === ' ' && !repeat) this.player.tryDash(this.input.moveDir(tmp), this);
           if (k === 'e' && !repeat) this.interactables.interact();
+          if (k === 'f' && !repeat) this.player.trySkill(this);
           if (k === 'escape' || k === 'p') this.setPaused(true);
         } else if (this.state === 'paused' && (k === 'escape' || k === 'p')) {
           this.setPaused(false);
@@ -244,6 +276,8 @@ export class Game {
       shield: this.player.shield,
       dashReady: 1 - this.player.dashCd / this.player.dashCooldown,
       reload: this.player.reload,
+      skillReady: this.player.skillReady,
+      skillActive: this.player.skillT > 0,
       room: this.room.n,
       roomLabel: this.room.label,
       score: this.score,
@@ -314,7 +348,7 @@ export class Game {
       this.hud.toast('扇区已净化');
       sfx.clear();
       this.projectiles.clearEnemyBullets();
-      if (room.isBoss || room.kind === 'elite' || room.n <= 2 || Math.random() < BALANCE.rooms.weaponDropChance) {
+      if (room.isBoss || room.kind === 'elite' || room.n <= 2 || rnd() < BALANCE.rooms.weaponDropChance) {
         this.interactables.spawnWeaponDrop(room.lootSpot.x, room.lootSpot.z);
       }
     }
@@ -397,6 +431,79 @@ export class Game {
     }, 550);
   }
 
+  private toTitle(): void {
+    this.state = 'title';
+    this.screens.hideAll();
+    this.hud.show(false);
+    this.hud.prompt(null);
+    this.enemies.clear();
+    this.projectiles.clear();
+    this.pickups.clear();
+    this.interactables.clear();
+    this.hazards.clear();
+    for (const t of this.portalTags) this.floaters.removeTag(t);
+    this.portalTags = [];
+    this.room.build(1, 'combat');
+    this.atmosphere.build(this.room);
+    this.player.setMech(MECHS[this.profile.selected]);
+    this.player.pos.set(0, 0, 3);
+    this.player.mesh.position.copy(this.player.pos);
+    this.player.mesh.visible = true;
+    this.refreshTitle();
+    this.screens.toggle('titleScreen', true);
+  }
+
+  private refreshTitle(): void {
+    const d = this.profile.daily;
+    const today = todayKey();
+    this.screens.showTitleInfo(this.profile.crystals, MECHS[this.profile.selected].name, d && d.date === today ? d.best : null, today);
+  }
+
+  private openHangar(): void {
+    this.screens.toggle('titleScreen', false);
+    this.renderHangar();
+    this.screens.toggle('hangarScreen', true);
+  }
+
+  private closeHangar(): void {
+    this.screens.toggle('hangarScreen', false);
+    this.player.setMech(MECHS[this.profile.selected]);
+    this.refreshTitle();
+    this.screens.toggle('titleScreen', true);
+  }
+
+  private renderHangar(): void {
+    this.screens.showHangar(this.profile, {
+      unlock: (id: MechId) => {
+        const def = MECHS[id];
+        if (this.profile.crystals < def.cost || this.profile.mechs.includes(id)) { sfx.denied(); return; }
+        this.profile.crystals -= def.cost;
+        this.profile.mechs.push(id);
+        this.profile.selected = id;
+        saveProfile(this.profile);
+        sfx.buy();
+        this.renderHangar();
+      },
+      select: (id: MechId) => {
+        this.profile.selected = id;
+        saveProfile(this.profile);
+        this.player.setMech(MECHS[id]);
+        sfx.pickup();
+        this.renderHangar();
+      },
+      buy: (id: TalentId) => {
+        const def = TALENTS.find(t => t.id === id)!;
+        const lvl = talentLevel(this.profile, id);
+        if (lvl >= def.max || this.profile.crystals < def.cost(lvl)) { sfx.denied(); return; }
+        this.profile.crystals -= def.cost(lvl);
+        this.profile.talents[id] = lvl + 1;
+        saveProfile(this.profile);
+        sfx.buy();
+        this.renderHangar();
+      },
+    });
+  }
+
   private statLines(): StatLine[] {
     const p = this.player, w = p.weaponDef;
     return [
@@ -434,9 +541,17 @@ export class Game {
     const best = loadBest();
     const isNewBest = !best || this.score > best.score;
     if (isNewBest) saveBest({ room: this.room.n, score: this.score });
+    const crystals = crystalsFor({ score: this.score, room: this.room.n, bosses: this.bossKills });
+    this.profile.crystals += crystals;
+    if (this.daily) {
+      const today = todayKey();
+      const prev = this.profile.daily?.date === today ? this.profile.daily.best : 0;
+      this.profile.daily = { date: today, best: Math.max(prev, this.score) };
+    }
+    saveProfile(this.profile);
     const summary = {
       room: this.room.n, score: this.score, kills: this.kills, coins: this.coinsEarned,
-      bestCombo: this.bestCombo, isNewBest, buffs: this.player.buffs,
+      bestCombo: this.bestCombo, isNewBest, buffs: this.player.buffs, crystals, daily: this.daily,
     };
     setTimeout(() => this.screens.showGameOver(summary), 900);
   }

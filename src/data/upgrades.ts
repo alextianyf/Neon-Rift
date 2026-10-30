@@ -1,3 +1,4 @@
+import { rnd } from '../core/rng';
 import type { Player } from '../game/player';
 
 export type Rarity = 'common' | 'rare' | 'legendary';
@@ -68,14 +69,14 @@ export function rollUpgrades(p: Player, n: number, weights: Record<Rarity, numbe
     // fall back to any rarity when the weighted ones are exhausted
     const candidates = rarities.length ? rarities : [...new Set(pool.map(u => u.rarity))];
     const total = candidates.reduce((s, r) => s + (weights[r] || 1), 0);
-    let roll = Math.random() * total;
+    let roll = rnd() * total;
     let rarity = candidates[0];
     for (const r of candidates) {
       roll -= weights[r] || 1;
       if (roll <= 0) { rarity = r; break; }
     }
     const options = pool.filter(u => u.rarity === rarity);
-    const pick = options[Math.floor(Math.random() * options.length)];
+    const pick = options[Math.floor(rnd() * options.length)];
     picks.push(pick);
     pool.splice(pool.indexOf(pick), 1);
   }

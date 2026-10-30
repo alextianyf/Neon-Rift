@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { disposeTree } from '../core/assets';
-import { clamp, rand } from '../core/math';
+import { clamp } from '../core/math';
+import { rnd, rrand } from '../core/rng';
 import { BALANCE } from '../data/balance';
 import { ENEMIES, SPAWN_TABLE, bossFor, type EnemyKind } from '../data/enemies';
 import { CHALLENGE_TIME, ROOM_INFO, type RoomKind } from '../data/map';
@@ -38,7 +39,7 @@ function edgeLines(geo: THREE.BufferGeometry, color: THREE.Color): THREE.LineSeg
 }
 
 function pick<T>(weights: [T, number][]): T {
-  let r = Math.random() * weights.reduce((s, [, w]) => s + w, 0);
+  let r = rnd() * weights.reduce((s, [, w]) => s + w, 0);
   for (const [v, w] of weights) if ((r -= w) <= 0) return v;
   return weights[0][0];
 }
@@ -145,7 +146,7 @@ export class Room {
       this.lootSpot.set(4, 0, -hh + 3.5);
     } else if (this.layout === 'lshape') {
       // a solid block fills one far corner, turning the room into an L
-      const sx = Math.random() < 0.5 ? 1 : -1;
+      const sx = rnd() < 0.5 ? 1 : -1;
       const x0 = hw * 0.32, z1 = -hh * 0.3;
       block(sx * (x0 + hw) / 2, (-hh + z1) / 2, hw - x0, z1 + hh, 2.6);
     } else if (this.layout === 'lanes') {
@@ -158,17 +159,17 @@ export class Room {
 
     // scattered pillars, fewer when the layout already has features
     if (boss) {
-      for (const sx of [-1, 1]) for (const sz of [-1, 1]) block(sx * hw * 0.55, sz * hh * 0.5, 2, 2, rand(1.4, 2.8));
+      for (const sx of [-1, 1]) for (const sz of [-1, 1]) block(sx * hw * 0.55, sz * hh * 0.5, 2, 2, rrand(1.4, 2.8));
     } else if (shop) {
-      for (const sx of [-1, 1]) block(sx * (hw - 3), -hh + 3, 1.5, 1.5, rand(1.4, 2.8));
+      for (const sx of [-1, 1]) block(sx * (hw - 3), -hh + 3, 1.5, 1.5, rrand(1.4, 2.8));
     } else {
       const base = this.layout === 'arena' ? 5 : 2;
-      const count = Math.round((base + Math.random() * 4) * (hw * hh) / (18 * 12));
+      const count = Math.round((base + rnd() * 4) * (hw * hh) / (18 * 12));
       for (let tries = 0, placed = 0; placed < count && tries < 150; tries++) {
-        const w = rand(1.2, 3.2), d = rand(1.2, 3.2);
-        const x = rand(-hw + 3, hw - 3), z = rand(-hh + 3, hh - 3);
+        const w = rrand(1.2, 3.2), d = rrand(1.2, 3.2);
+        const x = rrand(-hw + 3, hw - 3), z = rrand(-hh + 3, hh - 3);
         if (!this.isFree(x, z, Math.max(w, d) / 2 + 2)) continue;
-        block(x, z, w, d, rand(1.4, 2.8));
+        block(x, z, w, d, rrand(1.4, 2.8));
         placed++;
       }
     }
@@ -205,7 +206,7 @@ export class Room {
           const e = this.rollSpawn(elite);
           budget -= ENEMIES[e.kind].cost * e.count * (e.elite ? 2.5 : 1);
           wave.push({ ...e, delay: t });
-          t += rand(0.25, 0.7);
+          t += rrand(0.25, 0.7);
         }
         this.waves.push(wave);
       }
@@ -220,11 +221,11 @@ export class Room {
   rollSpawn(eliteRoom = false): Omit<SpawnEntry, 'delay'> {
     const n = this.n, E = BALANCE.elites;
     const pool = SPAWN_TABLE.filter(s => n >= s.from && !(eliteRoom && s.pack));
-    let r = Math.random() * pool.reduce((sum, s) => sum + s.weight, 0);
+    let r = rnd() * pool.reduce((sum, s) => sum + s.weight, 0);
     const s = pool.find(p => (r -= p.weight) <= 0) ?? pool[0];
-    const count = s.pack ? s.pack[0] + Math.floor(Math.random() * (s.pack[1] - s.pack[0] + 1)) : 1;
+    const count = s.pack ? s.pack[0] + Math.floor(rnd() * (s.pack[1] - s.pack[0] + 1)) : 1;
     const eliteChance = n >= E.fromRoom ? Math.min(E.maxChance, E.chance + (n - E.fromRoom) * E.chancePerRoom) : 0;
-    const elite = !s.pack && (eliteRoom || Math.random() < eliteChance);
+    const elite = !s.pack && (eliteRoom || rnd() < eliteChance);
     return { kind: s.kind, count, elite };
   }
 
@@ -291,7 +292,7 @@ export class Room {
 
   findSpawn(from: THREE.Vector3, minDist: number, r: number): [number, number] {
     for (let i = 0; i < 40; i++) {
-      const x = rand(-this.hw + 1.5, this.hw - 1.5), z = rand(-this.hh + 1.5, this.hh - 1.5);
+      const x = rrand(-this.hw + 1.5, this.hw - 1.5), z = rrand(-this.hh + 1.5, this.hh - 1.5);
       if (!this.blocked(x, z, r) && Math.hypot(x - from.x, z - from.z) >= minDist) return [x, z];
     }
     return [from.x > 0 ? -this.hw + 2 : this.hw - 2, -this.hh + 2];
