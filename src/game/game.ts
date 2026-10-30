@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { initAudio, setVolume, sfx } from '../core/audio';
 import { Graphics } from '../core/graphics';
-import { Input } from '../core/input';
+import { Input, type PadButton } from '../core/input';
 import { rnd, seedFromString, seedRun, todayKey } from '../core/rng';
 import { BALANCE } from '../data/balance';
 import { ENEMIES } from '../data/enemies';
@@ -91,6 +91,8 @@ export class Game {
     const loop = () => {
       requestAnimationFrame(loop);
       const dt = this.fx.consumeHitstop(Math.min(this.clock.getDelta(), 1 / 30));
+      this.input.pollGamepad();
+      if (this.input.usingPad && this.state === 'play') this.placePadCrosshair();
       if (this.state === 'play') this.update(dt);
       else if (this.state === 'title') {
         this.time += dt;
@@ -240,7 +242,49 @@ export class Game {
         if (this.state === 'play') this.switchWeapon((this.player.weapon + dir + n) % n);
       },
       onBlur: () => { if (this.state === 'play') this.setPaused(true); },
+      onPad: b => this.onPad(b),
     };
+  }
+
+  // Gamepad buttons, by game state.
+  private onPad(b: PadButton): void {
+    const n = this.player.slots.length;
+    const click = (id: string) => (document.getElementById(id) as HTMLButtonElement | null)?.click();
+    const visible = (id: string) => !document.getElementById(id)?.classList.contains('hidden');
+    switch (this.state) {
+      case 'play':
+        if (b === 'a' || b === 'lt') this.player.tryDash(this.input.moveDir(tmp), this);
+        else if (b === 'x') this.interactables.interact();
+        else if (b === 'y') this.player.trySkill(this);
+        else if (b === 'rb') this.switchWeapon((this.player.weapon + 1) % n);
+        else if (b === 'lb') this.switchWeapon((this.player.weapon - 1 + n) % n);
+        else if (b === 'start') this.setPaused(true);
+        break;
+      case 'paused':
+        if (b === 'start' || b === 'b') this.setPaused(false);
+        break;
+      case 'upgrade':
+        if (b === 'x') this.pickUpgrade(0);
+        else if (b === 'y') this.pickUpgrade(1);
+        else if (b === 'b') this.pickUpgrade(2);
+        break;
+      case 'dead':
+        if (b === 'a') click('restartBtn');
+        else if (b === 'b') click('menuBtn');
+        break;
+      case 'title':
+        if (visible('hangarScreen')) { if (b === 'b') click('hangarBack'); }
+        else if (b === 'a' || b === 'start') click('startBtn');
+        else if (b === 'y') click('dailyBtn');
+        else if (b === 'x') click('hangarBtn');
+        break;
+    }
+  }
+
+  // With a gamepad the crosshair follows the stick's aim point instead of the mouse.
+  private placePadCrosshair(): void {
+    const v = tmp.copy(this.player.aimTarget).project(this.gfx.camera);
+    this.screens.crosshair.style.transform = `translate(${(v.x + 1) / 2 * innerWidth}px, ${(1 - v.y) / 2 * innerHeight}px)`;
   }
 
   private switchWeapon(i: number): void {

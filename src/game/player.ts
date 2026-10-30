@@ -209,6 +209,11 @@ export class Player {
     sfx.zap();
   }
 
+  // Where the player is aiming in the world (cursor or gamepad target).
+  get aimTarget(): THREE.Vector3 {
+    return aimPoint;
+  }
+
   get dashCooldown(): number {
     return P.dashCooldown * this.dashCdMul;
   }
@@ -292,10 +297,16 @@ export class Player {
   }
 
   update(dt: number, g: Game): void {
-    raycaster.setFromCamera(g.input.mouseNDC, g.gfx.camera);
-    if (raycaster.ray.intersectPlane(aimPlane, aimPoint)) {
-      const dx = aimPoint.x - this.pos.x, dz = aimPoint.z - this.pos.z, l = Math.hypot(dx, dz);
-      if (l > 0.3) this.aim.set(dx / l, 0, dz / l);
+    if (g.input.usingPad) {
+      // right stick aims directly; the aim point sits a fixed distance ahead
+      this.aim.set(g.input.padAim.x, 0, g.input.padAim.y);
+      aimPoint.set(this.pos.x + this.aim.x * 7, CANNON_Y, this.pos.z + this.aim.z * 7);
+    } else {
+      raycaster.setFromCamera(g.input.mouseNDC, g.gfx.camera);
+      if (raycaster.ray.intersectPlane(aimPlane, aimPoint)) {
+        const dx = aimPoint.x - this.pos.x, dz = aimPoint.z - this.pos.z, l = Math.hypot(dx, dz);
+        if (l > 0.3) this.aim.set(dx / l, 0, dz / l);
+      }
     }
     this.dashCd -= dt;
     this.invuln -= dt;
@@ -320,10 +331,10 @@ export class Player {
       this.pos.addScaledVector(this.vel, dt);
     }
     g.room.collide(this.pos, this.r);
-    if (g.input.mouseDown && this.fireCd <= 0) this.fire(g);
+    if (g.input.firing && this.fireCd <= 0) this.fire(g);
 
     this.mesh.position.copy(this.pos);
-    this.faceYaw = this.screenFacing(g);
+    this.faceYaw = g.input.usingPad ? Math.atan2(this.aim.x, this.aim.z) : this.screenFacing(g);
     this.mech.update(dt, this.vel, this.faceYaw, this.speed, this.dashT > 0);
     // blink while invulnerable after taking a hit
     this.mesh.visible = !(this.invuln > 0 && this.dashT <= 0 && Math.floor(g.time * 20) % 2 === 0);

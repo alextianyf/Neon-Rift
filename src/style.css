@@ -90,6 +90,7 @@ button.go.alt:hover { border-color: var(--cyan); }
 .pips i.on { background: var(--cyan); box-shadow: 0 0 6px var(--cyan); }
 button.mini { font-family: var(--font-ui); font-size: 13px; font-weight: 700; color: #05070d; background: var(--gold); border: 0; padding: 5px 12px; cursor: pointer; clip-path: var(--notch); white-space: nowrap; }
 button.mini:disabled { background: rgba(255, 255, 255, .15); color: rgba(255, 255, 255, .5); cursor: default; }
+.padhint { margin-top: 14px; }
 .crystalgain { font-family: var(--font-num); color: var(--gold); text-shadow: 0 0 10px rgba(255, 210, 63, .6); margin-bottom: 8px; }
 
 /* boss */
