@@ -8,20 +8,23 @@ export interface PointLike {
   z: number;
 }
 
+type ParticleKind = 'bit' | 'ring' | 'line';
+
 interface Particle {
-  mesh: THREE.Mesh;
+  kind: ParticleKind;
+  obj: THREE.Mesh | THREE.Line;
   vel: THREE.Vector3;
   life: number;
   max: number;
-  size: number;
-  grow?: number;  // set for shockwave rings, which own their material
+  size: number;   // bits: start scale; rings: final radius
 }
 
-const MAX_PARTICLES = 600;
+const MAX_PARTICLES = 700;
 
-// Particles, screen shake and hitstop: the "juice" that makes hits feel good.
+// Particles, lightning, screen shake and hitstop: the "juice" that makes hits feel good.
 export class Effects {
   shakeAmt = 0;
+  shakeScale = 1;  // 0 disables screen shake (settings)
   private hitstopT = 0;
   private readonly particles: Particle[] = [];
 
@@ -36,7 +39,7 @@ export class Effects {
       const sz = size * rand(0.6, 1.3);
       m.scale.setScalar(sz);
       this.scene.add(m);
-      this.particles.push({ mesh: m, vel: new THREE.Vector3(Math.sin(a) * s, rand(1, 5), Math.cos(a) * s), life, max: life, size: sz });
+      this.particles.push({ kind: 'bit', obj: m, vel: new THREE.Vector3(Math.sin(a) * s, rand(1, 5), Math.cos(a) * s), life, max: life, size: sz });
     }
   }
 
@@ -46,11 +49,27 @@ export class Effects {
     ring.rotation.x = -Math.PI / 2;
     ring.position.set(x, 0.1, z);
     this.scene.add(ring);
-    this.particles.push({ mesh: ring, vel: new THREE.Vector3(), life: 0.3, max: 0.3, size: 0, grow: radius });
+    this.particles.push({ kind: 'ring', obj: ring, vel: new THREE.Vector3(), life: 0.3, max: 0.3, size: radius });
+  }
+
+  // Jagged bolt between two points, used by chain lightning.
+  lightning(a: PointLike, b: PointLike, color: number): void {
+    const pts: THREE.Vector3[] = [];
+    const segs = 7, ay = a.y ?? 0.8, by = b.y ?? 0.8;
+    const dx = b.x - a.x, dz = b.z - a.z, len = Math.hypot(dx, dz) || 1;
+    const nx = -dz / len, nz = dx / len;  // perpendicular on the ground plane
+    for (let i = 0; i <= segs; i++) {
+      const t = i / segs, off = i === 0 || i === segs ? 0 : rand(-0.45, 0.45);
+      pts.push(new THREE.Vector3(a.x + dx * t + nx * off, ay + (by - ay) * t + rand(-0.2, 0.2), a.z + dz * t + nz * off));
+    }
+    const mat = new THREE.LineBasicMaterial({ color: new THREE.Color(color).multiplyScalar(3), transparent: true });
+    const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), mat);
+    this.scene.add(line);
+    this.particles.push({ kind: 'line', obj: line, vel: new THREE.Vector3(), life: 0.16, max: 0.16, size: 0 });
   }
 
   shake(amount: number): void {
-    this.shakeAmt = Math.min(1.3, this.shakeAmt + amount);
+    this.shakeAmt = Math.min(1.3, this.shakeAmt + amount * this.shakeScale);
   }
 
   hitstop(seconds: number): void {
@@ -78,21 +97,24 @@ export class Effects {
         continue;
       }
       const k = p.life / p.max;
-      if (p.grow) {
-        p.mesh.scale.setScalar(p.grow * (1 - k) + 0.3);
-        (p.mesh.material as THREE.MeshBasicMaterial).opacity = k;
-        continue;
+      if (p.kind === 'ring') {
+        p.obj.scale.setScalar(p.size * (1 - k) + 0.3);
+        (p.obj.material as THREE.MeshBasicMaterial).opacity = k;
+      } else if (p.kind === 'line') {
+        (p.obj.material as THREE.LineBasicMaterial).opacity = k;
+      } else {
+        const o = p.obj;
+        p.vel.y -= 16 * dt;
+        o.position.addScaledVector(p.vel, dt);
+        if (o.position.y < 0.05) {
+          o.position.y = 0.05;
+          p.vel.y *= -0.4;
+          p.vel.x *= 0.7;
+          p.vel.z *= 0.7;
+        }
+        o.scale.setScalar(p.size * k);
+        o.rotation.x += dt * 8;
       }
-      p.vel.y -= 16 * dt;
-      p.mesh.position.addScaledVector(p.vel, dt);
-      if (p.mesh.position.y < 0.05) {
-        p.mesh.position.y = 0.05;
-        p.vel.y *= -0.4;
-        p.vel.x *= 0.7;
-        p.vel.z *= 0.7;
-      }
-      p.mesh.scale.setScalar(p.size * k);
-      p.mesh.rotation.x += dt * 8;
     }
   }
 
@@ -102,7 +124,11 @@ export class Effects {
   }
 
   private remove(p: Particle): void {
-    this.scene.remove(p.mesh);
-    if (p.grow) (p.mesh.material as THREE.Material).dispose();
+    this.scene.remove(p.obj);
+    if (p.kind === 'ring') (p.obj.material as THREE.Material).dispose();
+    if (p.kind === 'line') {
+      p.obj.geometry.dispose();
+      (p.obj.material as THREE.Material).dispose();
+    }
   }
 }

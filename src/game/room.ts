@@ -16,6 +16,8 @@ export interface SpawnEntry {
   delay: number;  // seconds after entering the room
 }
 
+export type RoomKind = 'combat' | 'boss' | 'shop';
+
 const PORTAL_RADIUS = 1.4;
 
 function edgeLines(geo: THREE.BufferGeometry, color: THREE.Color): THREE.LineSegments {
@@ -39,8 +41,19 @@ export class Room {
 
   constructor(private readonly scene: THREE.Scene) {}
 
+  readonly portalPos = new THREE.Vector3();
+
+  get kind(): RoomKind {
+    const k = this.n % BALANCE.rooms.bossEvery;
+    return k === 0 ? 'boss' : k === BALANCE.rooms.shopOffset ? 'shop' : 'combat';
+  }
+
   get isBoss(): boolean {
-    return this.n % BALANCE.rooms.bossEvery === 0;
+    return this.kind === 'boss';
+  }
+
+  get label(): string {
+    return { combat: '', boss: '首领', shop: '商店' }[this.kind];
   }
 
   build(n: number): void {
@@ -50,7 +63,8 @@ export class Room {
     this.hw = boss ? 17 : 15;
     this.hh = boss ? 12 : 10;
     this.obstacles = [];
-    this.theme.setHSL((0.52 + n * 0.13) % 1, 0.9, 0.55);
+    const shop = this.kind === 'shop';
+    this.theme.setHSL(shop ? 0.13 : (0.52 + n * 0.13) % 1, 0.9, 0.55);
     const { hw, hh, theme } = this;
     const g = new THREE.Group();
 
@@ -66,7 +80,7 @@ export class Room {
     g.add(new THREE.LineSegments(grid, new THREE.LineBasicMaterial({ color: theme.clone().multiplyScalar(0.3) })));
 
     const wallMat = new THREE.MeshStandardMaterial({ color: 0x15131f, roughness: 0.7 });
-    const edgeCol = theme.clone().multiplyScalar(2.2);
+    const edgeCol = theme.clone().multiplyScalar(4.5);
     const walls: [number, number, number, number][] = [[0, -hh, hw * 2 + 1, 1], [0, hh, hw * 2 + 1, 1], [-hw, 0, 1, hh * 2 + 1], [hw, 0, 1, hh * 2 + 1]];
     for (const [x, z, w, d] of walls) {
       const geo = new THREE.BoxGeometry(w, 1.6, d);
@@ -88,6 +102,8 @@ export class Room {
     };
     if (boss) {
       for (const sx of [-1, 1]) for (const sz of [-1, 1]) addPillar(sx * hw * 0.55, sz * hh * 0.5, 2, 2);
+    } else if (shop) {
+      for (const sx of [-1, 1]) addPillar(sx * (hw - 3), -hh + 3, 1.5, 1.5);
     } else {
       const count = 3 + Math.floor(Math.random() * 4);
       for (let tries = 0; this.obstacles.length < count && tries < 60; tries++) {
@@ -107,7 +123,9 @@ export class Room {
   // Fill the spawn queue for the current room and reset its timers.
   plan(): void {
     const n = this.n, R = BALANCE.rooms, q: SpawnEntry[] = [];
-    if (this.isBoss) {
+    if (this.kind === 'shop') {
+      // no enemies; the shop counts as cleared right away
+    } else if (this.isBoss) {
       q.push({ kind: 'boss', delay: 1.2 });
       for (let i = 0; i < 3; i++) q.push({ kind: 'grunt', delay: 2 + i * 0.4 });
     } else {
@@ -128,7 +146,7 @@ export class Room {
     }
     this.queue = q;
     this.time = 0;
-    this.cleared = false;
+    this.cleared = this.kind === 'shop';
     this.clearT = -1;
   }
 
@@ -181,8 +199,10 @@ export class Room {
     return [from.x > 0 ? -this.hw + 2 : this.hw - 2, -this.hh + 2];
   }
 
-  openPortal(): void {
+  openPortal(x = 0, z = 0): void {
     const g = new THREE.Group();
+    g.position.set(x, 0, z);
+    this.portalPos.set(x, 0, z);
     const col = new THREE.Color(0x4ff0ff).multiplyScalar(2.5);
     const ring = new THREE.Mesh(new THREE.TorusGeometry(1.3, 0.12, 8, 40), new THREE.MeshBasicMaterial({ color: col }));
     ring.rotation.x = -Math.PI / 2;
@@ -208,7 +228,7 @@ export class Room {
   }
 
   portalReached(p: THREE.Vector3): boolean {
-    return this.portal !== null && Math.hypot(p.x, p.z) < PORTAL_RADIUS;
+    return this.portal !== null && Math.hypot(p.x - this.portalPos.x, p.z - this.portalPos.z) < PORTAL_RADIUS;
   }
 
   private dispose(): void {

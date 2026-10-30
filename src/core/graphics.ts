@@ -5,7 +5,8 @@ import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPa
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { rand } from './math';
 
-const CAM_OFFSET = new THREE.Vector3(0, 22, 12);
+// fairly steep (~70°) so tall objects don't drift far from their footprint on screen
+const CAM_OFFSET = new THREE.Vector3(0, 21, 7.5);
 const camTarget = new THREE.Vector3();
 
 export class Graphics {
@@ -13,7 +14,7 @@ export class Graphics {
   readonly scene = new THREE.Scene();
   readonly camera = new THREE.PerspectiveCamera(50, innerWidth / innerHeight, 0.1, 200);
   readonly composer: EffectComposer;
-  readonly playerLight = new THREE.PointLight(0x55eeff, 40, 16);
+  readonly playerLight = new THREE.PointLight(0xb8d4ff, 10, 14);
   // One reusable light for muzzle flashes and explosions; adding/removing lights forces shader recompiles.
   private readonly flashLight = new THREE.PointLight(0xffaa55, 0, 18);
   private readonly camLook = new THREE.Vector3();
@@ -34,7 +35,8 @@ export class Graphics {
 
     this.composer = new EffectComposer(renderer);
     this.composer.addPass(new RenderPass(scene, camera));
-    this.composer.addPass(new UnrealBloomPass(new THREE.Vector2(innerWidth / 2, innerHeight / 2), 0.9, 0.5, 0.3));
+    // threshold high enough that lit surfaces (the mech's armor) don't bloom; only emissive/glow materials do
+    this.composer.addPass(new UnrealBloomPass(new THREE.Vector2(innerWidth / 2, innerHeight / 2), 0.9, 0.5, 0.72));
     this.composer.addPass(new OutputPass());
 
     addEventListener('resize', () => {
