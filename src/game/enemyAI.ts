@@ -105,7 +105,6 @@ const boss: Behavior = (e, f, g) => {
       sfx.enemyShot();
     }
   }
-  e.mesh.rotation.x += f.dt * 0.6;
 };
 
 export const BEHAVIORS: Record<EnemyKind, Behavior> = { grunt, shooter, brute, boss };

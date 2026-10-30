@@ -89,7 +89,7 @@ export class Interactables {
     group.add(icon);
     g.gfx.scene.add(group);
 
-    const priceHtml = price > 0 ? `<span class="price">${price} 金币</span>` : '';
+    const priceHtml = price > 0 ? `<span class="price">${price} 碎片</span>` : '';
     const colorCss = `#${color.toString(16).padStart(6, '0')}`;
     const tag = g.floaters.addTag(x, iconY + 0.9, z, `<b style="color:${colorCss}">${offerName(offer)}</b>${priceHtml}`);
     this.items.push({ offer, price, group, icon, pos: group.position, tag, t: Math.random() * 10 });
@@ -132,7 +132,7 @@ export class Interactables {
       if (p.owns(o.id)) verb = best.price > 0 ? '购买并升级' : '升级';
       else if (p.slots.length >= 3) verb = `${verb}并替换 ${WEAPONS[p.activeSlot.id].name}`;
     }
-    const cost = best.price > 0 ? ` · ${best.price} 金币` : '';
+    const cost = best.price > 0 ? ` · ${best.price} 碎片` : '';
     this.g.hud.prompt(`<kbd>E</kbd> ${verb} <b>${offerName(o)}</b>${cost}<div class="pdesc">${offerDesc(o)}</div>`, best.price <= p.coins);
   }
 
@@ -141,7 +141,7 @@ export class Interactables {
     if (!it) return;
     if (it.price > p.coins) {
       sfx.denied();
-      g.hud.toast('金币不足');
+      g.hud.toast('碎片不足');
       return;
     }
     p.coins -= it.price;

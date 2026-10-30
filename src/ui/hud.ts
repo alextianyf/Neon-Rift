@@ -2,6 +2,7 @@ import { clamp } from '../core/math';
 import { WEAPONS } from '../data/weapons';
 import type { WeaponSlot } from '../game/player';
 import { $ } from './dom';
+import { weaponIcon } from './icons';
 import type { BestRecord } from './storage';
 
 export interface HudStats {
@@ -44,6 +45,7 @@ export class Hud {
   private readonly toastEl = $('toast');
   private readonly vignette = $('vignette');
   private readonly fadeEl = $('fade');
+  private readonly fadeText = $('fadeText');
   private readonly cross = $('cross');
   private toastTimer = 0;
   private hitTimer = 0;
@@ -61,7 +63,7 @@ export class Hud {
     this.vignette.classList.toggle('low', s.hp > 0 && s.hp < s.maxHp * 0.3);
     this.dashFill.style.width = `${clamp(s.dashReady, 0, 1) * 100}%`;
     if (this.reloadFill) this.reloadFill.style.width = `${clamp(s.reload, 0, 1) * 100}%`;
-    this.roomN.textContent = String(s.room);
+    this.roomN.textContent = String(s.room).padStart(2, '0');
     this.roomLabel.textContent = s.roomLabel;
     this.score.textContent = String(s.score);
     if (s.coins !== this.lastCoins) {
@@ -82,14 +84,14 @@ export class Hud {
     for (let i = 0; i < maxSlots; i++) {
       const s = slots[i];
       if (!s) {
-        html.push(`<div class="slot empty"><kbd>${i + 1}</kbd><span class="wname">空</span></div>`);
+        html.push(`<div class="slot empty"><kbd>${i + 1}</kbd><span class="wname">— 空槽 —</span></div>`);
         continue;
       }
       const w = WEAPONS[s.id];
       const stars = s.level > 1 ? `<span class="lv">Lv.${s.level}</span>` : '';
       html.push(
         `<div class="slot ${i === active ? 'on' : ''}" style="--wc:${hex(w.color)}">` +
-        `<kbd>${i + 1}</kbd><span class="wname">${w.name}</span>${stars}` +
+        `<kbd>${i + 1}</kbd>${weaponIcon(s.id)}<span class="wname">${w.name}</span>${stars}` +
         `<div class="reload"><div></div></div></div>`,
       );
     }
@@ -104,7 +106,7 @@ export class Hud {
   }
 
   showBest(best: BestRecord | null): void {
-    this.best.textContent = best ? `房间 ${best.room} / ${best.score} 分` : '-';
+    this.best.textContent = best ? `扇区 ${best.room} / ${best.score}` : '-';
   }
 
   showBossBar(visible: boolean, name = ''): void {
@@ -140,7 +142,8 @@ export class Hud {
     setTimeout(() => { this.vignette.style.opacity = ''; }, 180);
   }
 
-  fade(on: boolean): void {
+  fade(on: boolean, label = ''): void {
+    if (label) this.fadeText.textContent = label;
     this.fadeEl.classList.toggle('on', on);
   }
 

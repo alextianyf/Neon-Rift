@@ -8,7 +8,7 @@ export interface PointLike {
   z: number;
 }
 
-type ParticleKind = 'bit' | 'ring' | 'line';
+type ParticleKind = 'bit' | 'ring' | 'line' | 'derez';
 
 interface Particle {
   kind: ParticleKind;
@@ -17,6 +17,7 @@ interface Particle {
   life: number;
   max: number;
   size: number;   // bits: start scale; rings: final radius
+  base?: THREE.Vector3;  // derez: starting scale
 }
 
 const MAX_PARTICLES = 700;
@@ -68,6 +69,17 @@ export class Effects {
     this.particles.push({ kind: 'line', obj: line, vel: new THREE.Vector3(), life: 0.16, max: 0.16, size: 0 });
   }
 
+  // Death "data dissolve": a copy of the enemy's wireframe shell flattens and widens as it fades.
+  derez(shell: THREE.LineSegments, color: number): void {
+    const mat = new THREE.LineBasicMaterial({ color: new THREE.Color(color).multiplyScalar(3), transparent: true });
+    const ghost = new THREE.LineSegments(shell.geometry, mat);
+    shell.getWorldPosition(ghost.position);
+    shell.getWorldQuaternion(ghost.quaternion);
+    shell.getWorldScale(ghost.scale);
+    this.scene.add(ghost);
+    this.particles.push({ kind: 'derez', obj: ghost, vel: new THREE.Vector3(), life: 0.28, max: 0.28, size: 0, base: ghost.scale.clone() });
+  }
+
   shake(amount: number): void {
     this.shakeAmt = Math.min(1.3, this.shakeAmt + amount * this.shakeScale);
   }
@@ -102,6 +114,10 @@ export class Effects {
         (p.obj.material as THREE.MeshBasicMaterial).opacity = k;
       } else if (p.kind === 'line') {
         (p.obj.material as THREE.LineBasicMaterial).opacity = k;
+      } else if (p.kind === 'derez' && p.base) {
+        const spread = 1 + (1 - k) * 0.9;
+        p.obj.scale.set(p.base.x * spread, p.base.y * Math.max(0.05, k * k), p.base.z * spread);
+        (p.obj.material as THREE.LineBasicMaterial).opacity = k;
       } else {
         const o = p.obj;
         p.vel.y -= 16 * dt;
@@ -125,7 +141,8 @@ export class Effects {
 
   private remove(p: Particle): void {
     this.scene.remove(p.obj);
-    if (p.kind === 'ring') (p.obj.material as THREE.Material).dispose();
+    // derez ghosts share the enemy's geometry, so only their material is theirs
+    if (p.kind === 'ring' || p.kind === 'derez') (p.obj.material as THREE.Material).dispose();
     if (p.kind === 'line') {
       p.obj.geometry.dispose();
       (p.obj.material as THREE.Material).dispose();

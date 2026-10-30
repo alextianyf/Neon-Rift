@@ -106,7 +106,7 @@ export class Floaters {
   private format(kind: FloaterKind, value: number): string {
     const n = Math.max(1, Math.round(value));
     if (kind === 'heal') return `+${n}`;
-    if (kind === 'coin') return `+${n} 金`;
+    if (kind === 'coin') return `+${n} 碎片`;
     return kind === 'crit' ? `${n}!` : String(n);
   }
 

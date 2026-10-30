@@ -6,6 +6,7 @@ import { BALANCE } from '../data/balance';
 import { ENEMIES, type EnemyDef, type EnemyKind } from '../data/enemies';
 import type { Element } from '../data/weapons';
 import { BEHAVIORS, type AIFrame } from './enemyAI';
+import { buildEnemyVisual, type EnemyVisual, type VisualState } from './enemyModels';
 import { Rift } from './rift';
 import type { Game } from './game';
 
@@ -14,7 +15,8 @@ export type AIState = 'move' | 'wind' | 'charge' | 'stun';
 export interface Enemy {
   kind: EnemyKind;
   def: EnemyDef;
-  mesh: THREE.Mesh;
+  mesh: THREE.Group;   // visual root, positioned by gameplay code
+  visual: EnemyVisual;
   mat: THREE.MeshStandardMaterial;
   base: THREE.Color;
   pos: THREE.Vector3;
@@ -64,6 +66,7 @@ const SHOCK_COLOR = 0x8fb8ff;
 const BURN_TINT = new THREE.Color(0xff7a2a);
 const tint = new THREE.Color();
 const frame: AIFrame = { toP: new THREE.Vector3(), dist: 0, spd: 0, desired: new THREE.Vector3(), dt: 0 };
+const vis: VisualState = { t: 0, charge: 0, enraged: false, stunned: false };
 
 export class Enemies {
   readonly list: Enemy[] = [];
@@ -88,13 +91,13 @@ export class Enemies {
 
   spawn(kind: EnemyKind, x: number, z: number): void {
     const def = ENEMIES[kind];
-    const mat = new THREE.MeshStandardMaterial({ color: 0x111111, emissive: def.color, emissiveIntensity: 1.6, roughness: 0.4, flatShading: true });
-    const mesh = new THREE.Mesh(def.geo, mat);
+    const visual = buildEnemyVisual(kind);
+    const mesh = visual.root, mat = visual.mat;
     mesh.position.set(x, def.y, z);
     this.g.gfx.scene.add(mesh);
     const hp = def.hp * (1 + (this.g.room.n - 1) * BALANCE.scaling.enemyHpPerRoom);
     this.list.push({
-      kind, def, mesh, mat, base: new THREE.Color(def.color),
+      kind, def, mesh, visual, mat, base: new THREE.Color(def.color),
       pos: new THREE.Vector3(x, 0, z), vel: new THREE.Vector3(), hp, maxHp: hp, r: def.r,
       cd: rand(0.8, 1.8), flash: 0, state: 'move', stateT: 0, dir: new THREE.Vector3(),
       side: Math.random() < 0.5 ? -1 : 1, t: Math.random() * 10, pattern: 0, burst: 0, burstT: 0,
@@ -191,6 +194,11 @@ export class Enemies {
       );
       if (e.kind !== 'boss') e.mesh.rotation.y = Math.atan2(toP.x, toP.z) + (e.kind === 'shooter' ? e.t * 2 : 0);
       e.mesh.scale.setScalar(e.scale);
+      vis.t = e.t;
+      vis.charge = e.kind === 'shooter' ? Math.max(0, 0.35 - e.cd) / 0.35 : e.state === 'wind' ? 1 : 0;
+      vis.enraged = e.enraged;
+      vis.stunned = e.state === 'stun';
+      e.visual.animate(dt, vis);
       this.paint(e);
     }
   }
@@ -278,6 +286,7 @@ export class Enemies {
 
   private kill(e: Enemy): void {
     const g = this.g, def = e.def, big = e.kind === 'boss';
+    g.fx.derez(e.visual.shell, def.color);
     g.gfx.scene.remove(e.mesh);
     e.mat.dispose();
     this.list.splice(this.list.indexOf(e), 1);

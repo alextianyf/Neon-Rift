@@ -30,7 +30,7 @@ export const UPGRADES: UpgradeDef[] = [
   { id: 'thrust', rarity: 'common', name: '轻量推进', desc: '移动速度 +10%', apply: p => { p.speed *= 1.1; } },
   { id: 'dash', rarity: 'common', name: '相位冲刺', desc: '冲刺冷却 -25%', max: 3, apply: p => { p.dashCdMul *= 0.75; } },
   { id: 'crit', rarity: 'common', name: '精准校准', desc: '暴击率 +8%', apply: p => { p.critChance += 0.08; } },
-  { id: 'magnet', rarity: 'common', name: '磁力回收', desc: '金币获取 +30%，拾取范围增大', apply: p => { p.coinMul *= 1.3; p.magnetMul *= 1.4; } },
+  { id: 'magnet', rarity: 'common', name: '磁力回收', desc: '碎片获取 +30%，拾取范围增大', apply: p => { p.coinMul *= 1.3; p.magnetMul *= 1.4; } },
   { id: 'repair', rarity: 'common', name: '紧急维修', desc: '回满生命', apply: p => p.heal(Infinity), available: p => p.hp < p.maxHp * 0.8 },
 
   // rare
@@ -46,7 +46,7 @@ export const UPGRADES: UpgradeDef[] = [
 
   // legendary
   { id: 'dashblast', rarity: 'legendary', name: '冲刺爆破', desc: '冲刺时在原地引发爆炸', max: 1, apply: p => { p.dashBlast = true; } },
-  { id: 'shield', rarity: 'legendary', name: '能量护盾', desc: '每个房间抵挡一次伤害', max: 1, apply: p => { p.shieldMax = 1; p.shield = 1; } },
+  { id: 'shield', rarity: 'legendary', name: '能量护盾', desc: '每个扇区抵挡一次伤害', max: 1, apply: p => { p.shieldMax = 1; p.shield = 1; } },
   { id: 'homing', rarity: 'legendary', name: '追踪弹头', desc: '子弹会自动追踪附近的敌人', max: 1, apply: p => { p.homing = true; } },
   {
     id: 'elements', rarity: 'legendary', name: '元素大师', desc: '所有元素几率 +10%，元素伤害翻倍', max: 1,

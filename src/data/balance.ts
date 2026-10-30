@@ -19,8 +19,8 @@ export const BALANCE = {
     bossEvery: 5,          // rooms 5, 10, 15...
     shopOffset: 3,         // shop when room % bossEvery === shopOffset: rooms 3, 8, 13...
     upgradeChoices: 3,
-    budgetBase: 3,         // spawn budget = budgetBase + room * budgetPerRoom
-    budgetPerRoom: 2.2,
+    budgetBase: 5,         // spawn budget = budgetBase + room * budgetPerRoom
+    budgetPerRoom: 3,
     waveGap: 3.5,          // seconds of breathing room between the two waves
     shooterFromRoom: 2,
     bruteFromRoom: 4,

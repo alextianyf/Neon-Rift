@@ -53,17 +53,17 @@ export class Room {
   }
 
   get label(): string {
-    return { combat: '', boss: '首领', shop: '商店' }[this.kind];
+    return { combat: '净化中', boss: '裂隙核心', shop: '黑市终端' }[this.kind];
   }
 
   build(n: number): void {
     this.dispose();
     this.n = n;
     const boss = this.isBoss;
-    this.hw = boss ? 17 : 15;
-    this.hh = boss ? 12 : 10;
-    this.obstacles = [];
     const shop = this.kind === 'shop';
+    this.hw = boss ? 21 : shop ? 15 : 19;
+    this.hh = boss ? 15 : shop ? 10 : 13;
+    this.obstacles = [];
     this.theme.setHSL(shop ? 0.13 : (0.52 + n * 0.13) % 1, 0.9, 0.55);
     const { hw, hh, theme } = this;
     const g = new THREE.Group();
@@ -105,8 +105,8 @@ export class Room {
     } else if (shop) {
       for (const sx of [-1, 1]) addPillar(sx * (hw - 3), -hh + 3, 1.5, 1.5);
     } else {
-      const count = 3 + Math.floor(Math.random() * 4);
-      for (let tries = 0; this.obstacles.length < count && tries < 60; tries++) {
+      const count = 5 + Math.floor(Math.random() * 5);
+      for (let tries = 0; this.obstacles.length < count && tries < 120; tries++) {
         const w = rand(1.2, 3.5), d = rand(1.2, 3.5);
         const x = rand(-hw + 3, hw - 3), z = rand(-hh + 3, hh - 3);
         if (Math.hypot(x, z) < 4.5) continue;            // keep center free for the portal

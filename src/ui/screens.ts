@@ -66,7 +66,7 @@ export class Screens {
     $('statList').innerHTML = stats.map(s => `<div class="statrow"><span>${s.label}</span><b>${s.value}</b></div>`).join('');
     $('buildList').innerHTML = build.length
       ? build.map(b => `<div class="buildrow ${b.rarity}" title="${b.desc}"><span>${b.name}</span>${b.count > 1 ? `<b>×${b.count}</b>` : ''}</div>`).join('')
-      : '<div class="dim">还没有强化</div>';
+      : '<div class="dim">尚未安装模块</div>';
     this.toggle('pauseScreen', true);
     this.setCrosshair(false);
   }
@@ -88,14 +88,14 @@ export class Screens {
   showGameOver(run: RunSummary): void {
     $('deadStats').innerHTML =
       `<div class="statgrid">` +
-      `<div><span>抵达房间</span><b>${run.room}</b></div>` +
+      `<div><span>抵达扇区</span><b>${run.room}</b></div>` +
       `<div><span>分数</span><b>${run.score}</b></div>` +
       `<div><span>击杀</span><b>${run.kills}</b></div>` +
       `<div><span>最高连杀</span><b>${run.bestCombo}</b></div>` +
-      `<div><span>获得金币</span><b>${run.coins}</b></div>` +
+      `<div><span>获得碎片</span><b>${run.coins}</b></div>` +
       `</div>` +
       (run.isNewBest ? '<div class="newbest">★ 新纪录</div>' : '') +
-      `<div class="dim">强化：${run.buffs.join('、') || '无'}</div>`;
+      `<div class="dim">模块：${run.buffs.join('、') || '无'}</div>`;
     this.toggle('deadScreen', true);
     this.setCrosshair(false);
   }

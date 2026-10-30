@@ -1,5 +1,3 @@
-import * as THREE from 'three';
-
 export type EnemyKind = 'grunt' | 'shooter' | 'brute' | 'boss';
 
 export interface EnemyDef {
@@ -17,24 +15,23 @@ export interface EnemyDef {
   dropChance: number;  // chance to drop health orbs on death
   dropCount: number;
   coins: [number, number];
-  geo: THREE.BufferGeometry;
 }
 
 export const ENEMIES: Record<EnemyKind, EnemyDef> = {
   grunt: {
     name: '冲锋兵', hp: 30, speed: 4.4, r: 0.6, y: 0.55, color: 0xff3355, dmg: 12, score: 10, cost: 1,
-    mass: 1, ccResist: 0, dropChance: 0.08, dropCount: 1, coins: [1, 2], geo: new THREE.BoxGeometry(1.1, 1.1, 1.1),
+    mass: 1, ccResist: 0, dropChance: 0.08, dropCount: 1, coins: [1, 2],
   },
   shooter: {
     name: '射手', hp: 24, speed: 3.2, r: 0.6, y: 0.9, color: 0xb455ff, dmg: 10, score: 15, cost: 1.5,
-    mass: 1, ccResist: 0, dropChance: 0.08, dropCount: 1, coins: [1, 3], geo: new THREE.OctahedronGeometry(0.72),
+    mass: 1, ccResist: 0, dropChance: 0.08, dropCount: 1, coins: [1, 3],
   },
   brute: {
     name: '重装兵', hp: 120, speed: 2.4, r: 1.1, y: 0.9, color: 0xff8a2a, dmg: 25, score: 35, cost: 3,
-    mass: 0.35, ccResist: 0.3, dropChance: 0.5, dropCount: 1, coins: [3, 5], geo: new THREE.BoxGeometry(2, 1.8, 2),
+    mass: 0.35, ccResist: 0.3, dropChance: 0.5, dropCount: 1, coins: [3, 5],
   },
   boss: {
     name: '核心守卫者', hp: 1100, speed: 2.0, r: 2.0, y: 2.2, color: 0xff2266, dmg: 30, score: 400, cost: 0,
-    mass: 0.05, ccResist: 0.6, dropChance: 1, dropCount: 5, coins: [25, 30], geo: new THREE.IcosahedronGeometry(2.1, 0),
+    mass: 0.05, ccResist: 0.6, dropChance: 1, dropCount: 5, coins: [25, 30],
   },
 };

@@ -11,6 +11,7 @@ import { Hud } from '../ui/hud';
 import { Screens, type BuildEntry, type StatLine } from '../ui/screens';
 import { loadSettings, saveSettings, type Settings } from '../ui/settings';
 import { loadBest, saveBest } from '../ui/storage';
+import { Atmosphere } from './atmosphere';
 import { Effects } from './effects';
 import { Enemies, type Enemy } from './enemies';
 import { Interactables } from './interactables';
@@ -43,6 +44,7 @@ export class Game {
   readonly input = new Input(this.gfx.renderer.domElement, this.screens.crosshair);
   readonly fx = new Effects(this.gfx.scene);
   readonly room = new Room(this.gfx.scene);
+  readonly atmosphere = new Atmosphere(this.gfx.scene);
   readonly player = new Player(this.gfx.scene);
   readonly enemies = new Enemies(this);
   readonly projectiles = new Projectiles(this);
@@ -63,6 +65,7 @@ export class Game {
 
     // backdrop for the title screen
     this.room.build(1);
+    this.atmosphere.build(this.room);
     this.player.pos.set(0, 0, 3);
     this.player.mesh.position.copy(this.player.pos);
   }
@@ -79,6 +82,7 @@ export class Game {
       if (this.state !== 'paused' && this.state !== 'upgrade') {
         this.fx.update(dt);
         this.room.updatePortal(dt, this.time);
+        this.atmosphere.update(dt, this.time, this.player.pos);
       }
       this.gfx.updateCamera(dt, this.player.pos, this.player.aim, this.fx.shakeAmt);
       this.fx.decayShake(dt);
@@ -251,6 +255,7 @@ export class Game {
     this.fx.clear();
     this.floaters.clear();
     this.room.build(n);
+    this.atmosphere.build(this.room);
     this.room.plan();
     this.player.pos.set(0, 0, this.room.hh - 2.5);
     this.player.vel.set(0, 0, 0);
@@ -260,9 +265,9 @@ export class Game {
     if (this.room.kind === 'shop') {
       this.interactables.setupShop();
       this.room.openPortal(0, -this.room.hh + 3.5);
-      this.hud.toast('商店 · 走近按 E 购买');
+      this.hud.toast('黑市终端 · 走近按 E 交易');
     } else {
-      this.hud.toast(this.room.isBoss ? '⚠ 首领房间' : `房间 ${n}`);
+      this.hud.toast(this.room.isBoss ? '⚠ 裂隙核心' : `扇区 ${String(n).padStart(2, '0')}`);
     }
   }
 
@@ -271,7 +276,7 @@ export class Game {
     if (!room.cleared && room.queue.length === 0 && this.enemies.pending === 0 && this.enemies.list.length === 0) {
       room.cleared = true;
       room.clearT = 0.9;
-      this.hud.toast('房间清空！');
+      this.hud.toast('扇区已净化');
       sfx.clear();
       this.projectiles.clearEnemyBullets();
       if (room.isBoss || room.n <= 2 || Math.random() < BALANCE.rooms.weaponDropChance) {
@@ -290,7 +295,7 @@ export class Game {
     this.hud.prompt(null);
     const boss = this.room.isBoss;
     this.upgradeChoices = rollUpgrades(this.player, BALANCE.rooms.upgradeChoices, boss ? ROLL_WEIGHTS.boss : ROLL_WEIGHTS.room);
-    this.screens.showUpgrades(this.upgradeChoices, boss ? '首领奖励 · 选择一项强化' : '选择一项强化', i => this.pickUpgrade(i));
+    this.screens.showUpgrades(this.upgradeChoices, boss ? '核心战利品 · 选择一个模块' : '选择一个模块', i => this.pickUpgrade(i));
   }
 
   private pickUpgrade(i: number): void {
@@ -302,18 +307,18 @@ export class Game {
     this.state = 'play';
     this.room.openPortal();
     sfx.portal();
-    this.hud.toast('传送门已开启');
+    this.hud.toast('裂隙通道已开启');
   }
 
   private goThroughPortal(): void {
     this.state = 'transition';
     sfx.portal();
-    this.hud.fade(true);
+    this.hud.fade(true, `SECTOR ${String(this.room.n + 1).padStart(2, '0')} // 跃迁中`);
     setTimeout(() => {
       this.enterRoom(this.room.n + 1);
       this.hud.fade(false);
       this.state = 'play';
-    }, 300);
+    }, 550);
   }
 
   private statLines(): StatLine[] {
@@ -328,7 +333,7 @@ export class Game {
       { label: '移动速度', value: p.speed.toFixed(1) },
       { label: '冲刺冷却', value: `${p.dashCooldown.toFixed(2)}s` },
       { label: '生命', value: `${Math.ceil(p.hp)} / ${p.maxHp}` },
-      { label: '金币', value: String(p.coins) },
+      { label: '数据碎片', value: String(p.coins) },
     ];
   }
 
