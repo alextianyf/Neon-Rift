@@ -2,8 +2,10 @@ import * as THREE from 'three';
 import { initAudio, setVolume, sfx } from '../core/audio';
 import { Graphics } from '../core/graphics';
 import { Input, type PadButton } from '../core/input';
+import { duck, setMood, setMusicVolume } from '../core/music';
 import { rnd, seedFromString, seedRun, todayKey } from '../core/rng';
 import { BALANCE } from '../data/balance';
+import { DEPTH_CRYSTAL_BONUS, DEPTH_DESC, FINAL_SECTOR, MAX_DEPTH, MODS, VICTORY_CRYSTALS, setDepth } from '../data/depth';
 import { ENEMIES } from '../data/enemies';
 import { ROOM_INFO, rollPaths, type RoomKind } from '../data/map';
 import { MECHS, TALENTS, crystalsFor, type MechId, type TalentId } from '../data/meta';
@@ -24,8 +26,9 @@ import { Pickups } from './pickups';
 import { Player } from './player';
 import { Projectiles } from './projectiles';
 import { Room } from './room';
+import { Tutorial } from './tutorial';
 
-export type GameState = 'title' | 'play' | 'paused' | 'upgrade' | 'transition' | 'dead';
+export type GameState = 'title' | 'play' | 'paused' | 'upgrade' | 'transition' | 'dead' | 'won';
 
 const tmp = new THREE.Vector3();
 const pct = (v: number) => `${Math.round(v * 100)}%`;
@@ -65,6 +68,10 @@ export class Game {
   private daily = false;
   bossKills = 0;
   private challengeSpawnT = 0;
+  private depth = 0;             // rift depth of the current run
+  private endless = false;       // kept going after clearing the final sector
+  private crystalsAwarded = 0;   // crystals already paid out this run (at victory)
+  private readonly tutorial = new Tutorial(this, this.profile.seen, () => saveProfile(this.profile));
 
   constructor() {
     this.bindInput();
@@ -74,10 +81,27 @@ export class Game {
     this.screens.onClick('hangarBtn', () => this.openHangar());
     this.screens.onClick('hangarBack', () => this.closeHangar());
     this.screens.onClick('menuBtn', () => this.toTitle());
+    this.screens.onClick('winContinue', () => this.continueEndless());
+    this.screens.onClick('winMenu', () => this.toTitle());
+    this.screens.onClick('depthDown', () => this.changeDepth(-1));
+    this.screens.onClick('depthUp', () => this.changeDepth(1));
     this.refreshTitle();
     this.screens.onClick('resumeBtn', () => this.setPaused(false));
-    this.screens.bindSettings(this.settings, s => this.applySettings(s));
+    this.screens.bindSettings(this.settings, s => {
+      if (s.hints && !this.settings.hints) this.tutorial.reset();
+      this.applySettings(s);
+    });
     this.applySettings(this.settings);
+    // browsers only start audio after a gesture: the first click or key on the title starts the menu music
+    const wake = () => {
+      initAudio();
+      setMusicVolume(this.settings.music * this.settings.volume);
+      if (this.state === 'title') setMood('menu');
+      removeEventListener('pointerdown', wake);
+      removeEventListener('keydown', wake);
+    };
+    addEventListener('pointerdown', wake);
+    addEventListener('keydown', wake);
 
     // backdrop for the title screen
     this.room.build(1, 'combat');
@@ -114,6 +138,10 @@ export class Game {
   start(daily: boolean): void {
     initAudio();
     this.daily = daily;
+    this.depth = daily ? 0 : this.profile.depth;
+    this.endless = false;
+    this.crystalsAwarded = 0;
+    setDepth(this.depth);
     seedRun(daily ? seedFromString(`neon-rift:${todayKey()}`) : undefined);
     const mech = MECHS[this.profile.selected];
     this.player.reset(mech, this.profile.talents);
@@ -134,6 +162,7 @@ export class Game {
   setPaused(paused: boolean): void {
     this.state = paused ? 'paused' : 'play';
     this.input.mouseDown = false;
+    duck(paused);
     if (paused) this.screens.showPause(this.statLines(), this.buildEntries());
     else this.screens.toggle('pauseScreen', false);
     this.screens.setCrosshair(!paused);
@@ -142,7 +171,7 @@ export class Game {
   // Continuous damage (acid) that ignores invulnerability frames and doesn't grant any.
   drainPlayer(amount: number): void {
     if (this.state !== 'play') return;
-    this.player.hp -= amount;
+    this.player.hp -= amount * MODS.enemyDmg;
     if (this.player.hp <= 0) this.onLethal();
   }
 
@@ -172,7 +201,7 @@ export class Game {
       this.hud.toast('护盾抵挡');
       return;
     }
-    p.hp -= dmg;
+    p.hp -= dmg * MODS.enemyDmg;
     p.invuln = BALANCE.player.hurtInvuln;
     this.combo = 0;
     this.fx.shake(0.55);
@@ -216,8 +245,11 @@ export class Game {
     this.settings = s;
     saveSettings(s);
     setVolume(s.volume);
+    setMusicVolume(s.music * s.volume);
     this.fx.shakeScale = s.shake ? 1 : 0;
     this.floaters.enabled = s.damageNumbers;
+    this.tutorial.enabled = s.hints;
+    if (!s.hints) this.tutorial.hide();
   }
 
   private bindInput(): void {
@@ -272,11 +304,17 @@ export class Game {
         if (b === 'a') click('restartBtn');
         else if (b === 'b') click('menuBtn');
         break;
+      case 'won':
+        if (b === 'a') click('winContinue');
+        else if (b === 'b') click('winMenu');
+        break;
       case 'title':
         if (visible('hangarScreen')) { if (b === 'b') click('hangarBack'); }
         else if (b === 'a' || b === 'start') click('startBtn');
         else if (b === 'y') click('dailyBtn');
         else if (b === 'x') click('hangarBtn');
+        else if (b === 'lb') this.changeDepth(-1);
+        else if (b === 'rb') this.changeDepth(1);
         break;
     }
   }
@@ -302,6 +340,8 @@ export class Game {
     this.pickups.update(dt);
     this.interactables.update(dt);
     this.hazards.update(dt);
+    this.tutorial.update(dt);
+    setMood(this.enemies.boss ? 'boss' : this.room.cleared ? 'calm' : 'combat');
     if (this.room.kind === 'challenge') this.updateChallenge(dt);
     else this.checkClear(dt);
     const path = this.state === 'play' ? this.room.portalReached(this.player.pos) : null;
@@ -398,7 +438,10 @@ export class Game {
     }
     if (room.clearT > 0) {
       room.clearT -= dt;
-      if (room.clearT <= 0) this.openUpgrade();
+      if (room.clearT <= 0) {
+        if (room.isBoss && room.n === FINAL_SECTOR && !this.endless) this.victory();
+        else this.openUpgrade();
+      }
     }
   }
 
@@ -409,6 +452,7 @@ export class Game {
     const kind = this.room.kind;
     const weights = kind === 'boss' || kind === 'elite' ? ROLL_WEIGHTS.boss : kind === 'challenge' ? ROLL_WEIGHTS.challenge : ROLL_WEIGHTS.room;
     const title = kind === 'boss' ? '核心战利品 · 选择一个模块' : kind === 'challenge' ? '挑战完成 · 选择一个模块' : '选择一个模块';
+    duck(true);
     this.upgradeChoices = rollUpgrades(this.player, BALANCE.rooms.upgradeChoices, weights);
     this.screens.showUpgrades(this.upgradeChoices, title, i => this.pickUpgrade(i));
   }
@@ -417,6 +461,7 @@ export class Game {
     const u = this.upgradeChoices[i];
     if (!u || this.state !== 'upgrade') return;
     this.applyUpgrade(u);
+    duck(false);
     this.screens.toggle('upgradeScreen', false);
     this.screens.setCrosshair(true);
     this.state = 'play';
@@ -477,6 +522,8 @@ export class Game {
 
   private toTitle(): void {
     this.state = 'title';
+    this.tutorial.hide();
+    setMood('menu');
     this.screens.hideAll();
     this.hud.show(false);
     this.hud.prompt(null);
@@ -501,6 +548,7 @@ export class Game {
     const d = this.profile.daily;
     const today = todayKey();
     this.screens.showTitleInfo(this.profile.crystals, MECHS[this.profile.selected].name, d && d.date === today ? d.best : null, today);
+    this.screens.showDepth(this.profile.depth, this.profile.maxDepth, DEPTH_DESC, this.profile.wins);
   }
 
   private openHangar(): void {
@@ -576,6 +624,8 @@ export class Game {
 
   private gameOver(): void {
     this.state = 'dead';
+    this.tutorial.hide();
+    setMood('off');
     this.input.mouseDown = false;
     this.hud.prompt(null);
     this.player.mesh.visible = false;
@@ -585,7 +635,7 @@ export class Game {
     const best = loadBest();
     const isNewBest = !best || this.score > best.score;
     if (isNewBest) saveBest({ room: this.room.n, score: this.score });
-    const crystals = crystalsFor({ score: this.score, room: this.room.n, bosses: this.bossKills });
+    const crystals = this.runCrystals() - this.crystalsAwarded;
     this.profile.crystals += crystals;
     if (this.daily) {
       const today = todayKey();
@@ -595,8 +645,63 @@ export class Game {
     saveProfile(this.profile);
     const summary = {
       room: this.room.n, score: this.score, kills: this.kills, coins: this.coinsEarned,
-      bestCombo: this.bestCombo, isNewBest, buffs: this.player.buffs, crystals, daily: this.daily,
+      bestCombo: this.bestCombo, isNewBest, buffs: this.player.buffs, crystals, daily: this.daily, depth: this.depth,
     };
     setTimeout(() => this.screens.showGameOver(summary), 900);
+  }
+
+  // Crystals earned by the run so far, including the depth bonus.
+  private runCrystals(): number {
+    const base = crystalsFor({ score: this.score, room: this.room.n, bosses: this.bossKills });
+    return Math.floor(base * (1 + this.depth * DEPTH_CRYSTAL_BONUS));
+  }
+
+  // Final sector cleared: pay out, unlock the next depth, and offer to keep going (endless).
+  private victory(): void {
+    this.state = 'won';
+    this.tutorial.hide();
+    setMood('menu');
+    this.input.mouseDown = false;
+    this.hud.prompt(null);
+    const crystals = this.runCrystals() + VICTORY_CRYSTALS;
+    this.crystalsAwarded = crystals - VICTORY_CRYSTALS;
+    this.profile.crystals += crystals;
+    this.profile.wins++;
+    let unlocked: number | null = null;
+    if (!this.daily && this.depth >= this.profile.maxDepth && this.depth < MAX_DEPTH) {
+      this.profile.maxDepth = this.depth + 1;
+      this.profile.depth = this.depth + 1;
+      unlocked = this.depth + 1;
+    }
+    if (this.daily) {
+      const today = todayKey();
+      const prev = this.profile.daily?.date === today ? this.profile.daily.best : 0;
+      this.profile.daily = { date: today, best: Math.max(prev, this.score) };
+    }
+    saveProfile(this.profile);
+    const best = loadBest();
+    if (!best || this.score > best.score) saveBest({ room: this.room.n, score: this.score });
+    sfx.levelUp();
+    this.fx.burst({ x: this.player.pos.x, y: 1, z: this.player.pos.z }, 0xffc83d, 60, 12, 0.3, 1.2);
+    this.screens.showVictory({
+      score: this.score, kills: this.kills, bestCombo: this.bestCombo, crystals, depth: this.depth,
+      unlocked, unlockedDesc: unlocked !== null ? DEPTH_DESC[unlocked] : '', buffs: this.player.buffs,
+    });
+  }
+
+  private continueEndless(): void {
+    this.endless = true;
+    this.screens.toggle('winScreen', false);
+    this.hud.toast('无尽模式 · 继续深入');
+    this.openUpgrade();
+  }
+
+  private changeDepth(delta: number): void {
+    const d = Math.max(0, Math.min(this.profile.maxDepth, this.profile.depth + delta));
+    if (d === this.profile.depth) { sfx.denied(); return; }
+    this.profile.depth = d;
+    saveProfile(this.profile);
+    sfx.weaponSwitch(d);
+    this.refreshTitle();
   }
 }

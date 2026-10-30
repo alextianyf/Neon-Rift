@@ -104,6 +104,10 @@ export class Hazards {
   constructor(private readonly g: Game) {}
 
   // Unstable rifts still open; the room can't be cleared until they're shut.
+  get active(): boolean {
+    return this.zones.length + this.barrels.length + this.rifts.length + this.grids.length + this.covers.length > 0;
+  }
+
   get openRifts(): number {
     return this.rifts.filter(r => !r.closed).length;
   }

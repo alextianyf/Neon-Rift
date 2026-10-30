@@ -4,6 +4,7 @@ import { sfx } from '../core/audio';
 import { rand } from '../core/math';
 import { BALANCE } from '../data/balance';
 import type { Game } from './game';
+import { MODS } from '../data/depth';
 
 type PickupKind = 'orb' | 'coin';
 
@@ -88,9 +89,10 @@ export class Pickups {
       sfx.coin();
       g.floaters.damage({ x: player.pos.x, y: 1.6, z: player.pos.z }, p.value, 'coin', player);
     } else {
-      player.heal(p.value);
+      const value = Math.round(p.value * MODS.healMul);
+      player.heal(value);
       sfx.pickup();
-      g.floaters.damage({ x: player.pos.x, y: 1.6, z: player.pos.z }, p.value, 'heal', this);
+      g.floaters.damage({ x: player.pos.x, y: 1.6, z: player.pos.z }, value, 'heal', this);
       g.fx.burst(pos, 0x55ff99, 8, 4, 0.12, 0.35);
     }
   }

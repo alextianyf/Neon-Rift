@@ -2,10 +2,12 @@ export interface Settings {
   volume: number;          // 0..1
   shake: boolean;
   damageNumbers: boolean;
+  hints: boolean;
+  music: number;           // 0..1, relative to the master volume
 }
 
 const KEY = 'neonrift.settings';
-const DEFAULTS: Settings = { volume: 0.8, shake: true, damageNumbers: true };
+const DEFAULTS: Settings = { volume: 0.8, shake: true, damageNumbers: true, hints: true, music: 0.6 };
 
 export function loadSettings(): Settings {
   try {

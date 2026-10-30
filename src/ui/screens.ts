@@ -4,8 +4,8 @@ import { talentLevel, type Profile } from './profile';
 import { $ } from './dom';
 import type { Settings } from './settings';
 
-export type OverlayId = 'titleScreen' | 'upgradeScreen' | 'pauseScreen' | 'deadScreen' | 'hangarScreen';
-const OVERLAYS: OverlayId[] = ['titleScreen', 'upgradeScreen', 'pauseScreen', 'deadScreen', 'hangarScreen'];
+export type OverlayId = 'titleScreen' | 'upgradeScreen' | 'pauseScreen' | 'deadScreen' | 'hangarScreen' | 'winScreen';
+const OVERLAYS: OverlayId[] = ['titleScreen', 'upgradeScreen', 'pauseScreen', 'deadScreen', 'hangarScreen', 'winScreen'];
 
 export interface RunSummary {
   room: number;
@@ -17,6 +17,18 @@ export interface RunSummary {
   buffs: string[];
   crystals: number;
   daily: boolean;
+  depth: number;
+}
+
+export interface VictorySummary {
+  score: number;
+  kills: number;
+  bestCombo: number;
+  crystals: number;
+  depth: number;
+  unlocked: number | null;   // newly unlocked depth, if any
+  unlockedDesc: string;
+  buffs: string[];
 }
 
 export interface HangarActions {
@@ -86,11 +98,19 @@ export class Screens {
     const vol = $('optVolume') as HTMLInputElement;
     const shake = $('optShake') as HTMLInputElement;
     const nums = $('optNumbers') as HTMLInputElement;
+    const hints = $('optHints') as HTMLInputElement;
+    const music = $('optMusic') as HTMLInputElement;
     vol.value = String(Math.round(initial.volume * 100));
+    music.value = String(Math.round(initial.music * 100));
     shake.checked = initial.shake;
     nums.checked = initial.damageNumbers;
-    const emit = () => onChange({ volume: +vol.value / 100, shake: shake.checked, damageNumbers: nums.checked });
+    hints.checked = initial.hints;
+    const emit = () => onChange({
+      volume: +vol.value / 100, music: +music.value / 100, shake: shake.checked, damageNumbers: nums.checked, hints: hints.checked,
+    });
     vol.addEventListener('input', emit);
+    music.addEventListener('input', emit);
+    hints.addEventListener('change', emit);
     shake.addEventListener('change', emit);
     nums.addEventListener('change', emit);
   }
@@ -99,6 +119,31 @@ export class Screens {
     $('titleCrystals').textContent = String(crystals);
     $('titleMech').textContent = mechName;
     $('titleDaily').textContent = dailyBest !== null ? `今日挑战（${today}）最佳：${dailyBest}` : `今日挑战（${today}）：尚未挑战`;
+  }
+
+  showDepth(depth: number, maxDepth: number, desc: string[], wins: number): void {
+    $('depthN').textContent = String(depth);
+    ($('depthDown') as HTMLButtonElement).disabled = depth <= 0;
+    ($('depthUp') as HTMLButtonElement).disabled = depth >= maxDepth;
+    const mods = desc.slice(1, depth + 1);
+    $('depthDesc').textContent = maxDepth === 0
+      ? '通关第 15 扇区解锁更高的裂隙深度'
+      : depth === 0 ? `标准难度 · 已通关 ${wins} 次` : `${mods.join(' · ')} · 结晶 +${depth * 20}%`;
+  }
+
+  showVictory(v: VictorySummary): void {
+    $('winStats').innerHTML =
+      `<div class="statgrid">` +
+      `<div><span>裂隙深度</span><b>${v.depth}</b></div>` +
+      `<div><span>分数</span><b>${v.score}</b></div>` +
+      `<div><span>击杀</span><b>${v.kills}</b></div>` +
+      `<div><span>最高连杀</span><b>${v.bestCombo}</b></div>` +
+      `</div>` +
+      `<div class="crystalgain">+${v.crystals} 裂隙结晶（含通关奖励）</div>` +
+      (v.unlocked !== null ? `<div class="newbest">★ 解锁裂隙深度 ${v.unlocked}：${v.unlockedDesc}</div>` : '') +
+      `<div class="dim">模块：${v.buffs.join('、') || '无'}</div>`;
+    this.toggle('winScreen', true);
+    this.setCrosshair(false);
   }
 
   showHangar(profile: Profile, act: HangarActions): void {
@@ -149,7 +194,7 @@ export class Screens {
       `<div><span>最高连杀</span><b>${run.bestCombo}</b></div>` +
       `<div><span>获得碎片</span><b>${run.coins}</b></div>` +
       `</div>` +
-      `<div class="crystalgain">+${run.crystals} 裂隙结晶${run.daily ? ' · 每日挑战' : ''}</div>` +
+      `<div class="crystalgain">+${run.crystals} 裂隙结晶${run.daily ? ' · 每日挑战' : run.depth ? ` · 深度 ${run.depth}` : ''}</div>` +
       (run.isNewBest ? '<div class="newbest">★ 新纪录</div>' : '') +
       `<div class="dim">模块：${run.buffs.join('、') || '无'}</div>`;
     this.toggle('deadScreen', true);

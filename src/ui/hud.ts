@@ -47,6 +47,8 @@ export class Hud {
   private readonly comboFill = $('comboFill');
   private readonly promptEl = $('prompt');
   private readonly toastEl = $('toast');
+  private readonly hintEl = $('hint');
+  private readonly hintText = $('hintText');
   private readonly vignette = $('vignette');
   private readonly fadeEl = $('fade');
   private readonly fadeText = $('fadeText');
@@ -130,6 +132,12 @@ export class Hud {
     if (html === null) return;
     if (this.promptEl.innerHTML !== html) this.promptEl.innerHTML = html;
     this.promptEl.classList.toggle('poor', !affordable);
+  }
+
+  // Tutorial hint panel; null hides it.
+  hint(html: string | null): void {
+    if (html !== null) this.hintText.innerHTML = html;
+    this.hintEl.classList.toggle('on', html !== null);
   }
 
   toast(msg: string): void {

@@ -73,6 +73,11 @@ canvas { display: block; cursor: none; }
 .titlebar { display: flex; gap: 22px; justify-content: center; flex-wrap: wrap; font-size: 14px; margin-bottom: 16px; }
 .titlebar b { color: #fff; }
 .titlebtns { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+.depthsel { display: flex; gap: 12px; align-items: center; justify-content: center; flex-wrap: wrap; margin: -4px 0 18px; font-size: 15px; }
+.depthsel .dl { letter-spacing: 3px; min-width: 120px; text-align: center; }
+.depthsel .dl b { font-family: var(--font-num); color: var(--pink); font-size: 20px; margin-left: 4px; }
+.depthsel button.mini { padding: 4px 12px; }
+#depthDesc { flex-basis: 100%; text-align: center; font-size: 13px; }
 button.go.alt { border-color: rgba(255, 255, 255, .35); background: rgba(255, 255, 255, .04); text-shadow: none; font-size: 14px; padding: 13px 28px; }
 button.go.alt:hover { border-color: var(--cyan); }
 .hangarbar { display: flex; gap: 14px; align-items: baseline; justify-content: center; margin: -6px 0 16px; font-size: 15px; }
@@ -226,3 +231,11 @@ button.go:hover { background: rgba(79, 240, 255, .2); }
   .overlay h1 { font-size: 40px; letter-spacing: 6px; }
   #tl { width: 210px; }
 }
+
+/* tutorial hint */
+#hint { position: absolute; left: 50%; bottom: 150px; transform: translate(-50%, 8px); display: flex; gap: 12px; align-items: center; max-width: min(760px, 90vw);
+  padding: 9px 18px; font-size: 15px; background: var(--panel); border: 1px solid rgba(79, 240, 255, .55); clip-path: var(--notch);
+  opacity: 0; transition: opacity .35s, transform .35s; pointer-events: none; }
+#hint.on { opacity: 1; transform: translate(-50%, 0); }
+#hint .lbl { color: var(--cyan); flex: none; }
+#hint kbd { font-family: var(--font-num); font-size: 12px; color: #05070d; background: var(--cyan); padding: 1px 7px; margin: 0 2px; font-weight: 800; }

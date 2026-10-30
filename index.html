@@ -39,6 +39,7 @@
   <div id="weapons"></div>
   <div id="buffs"></div>
   <div id="toast"></div>
+  <div id="hint"><span class="lbl">TIP</span><span id="hintText"></span></div>
 </div>
 
 <div id="titleScreen" class="overlay">
@@ -55,7 +56,13 @@
     <kbd>Esc / P</kbd><span>暂停（机体数据与设置）</span>
     <kbd>手柄</kbd><span>左摇杆移动 · 右摇杆瞄准 · RT 射击 · A 冲刺 · X 交互 · Y 技能 · LB/RB 换武装</span>
   </div>
-  <div class="tips">每 5 个扇区一个裂隙核心 · 第 3、8、13… 扇区是黑市终端 · 重复拾取同一武装会升级</div>
+  <div class="tips">共 15 个扇区，每 5 个扇区一个裂隙核心 · 击败第 15 扇区的裂隙主宰即通关 · 重复拾取同一武装会升级</div>
+  <div class="depthsel">
+    <button class="mini" id="depthDown">◀</button>
+    <span class="dl">裂隙深度 <b id="depthN">0</b></span>
+    <button class="mini" id="depthUp">▶</button>
+    <div id="depthDesc" class="dim"></div>
+  </div>
   <div class="titlebar">
     <span>机体：<b id="titleMech">先锋</b></span>
     <span>裂隙结晶：<b id="titleCrystals" class="gold">0</b></span>
@@ -84,8 +91,10 @@
     <div class="panel">
       <h3>设置</h3>
       <label class="opt">音量 <input type="range" id="optVolume" min="0" max="100"></label>
+      <label class="opt">音乐 <input type="range" id="optMusic" min="0" max="100"></label>
       <label class="opt"><input type="checkbox" id="optShake"> 屏幕震动</label>
       <label class="opt"><input type="checkbox" id="optNumbers"> 伤害数字</label>
+      <label class="opt"><input type="checkbox" id="optHints"> 新手提示（重新打开会从头提示）</label>
     </div>
   </div>
   <button class="go" id="resumeBtn">继续作战</button>
@@ -99,6 +108,18 @@
     <button class="go" id="restartBtn">重新部署</button>
     <button class="go alt" id="menuBtn">返回主菜单</button>
   </div>
+</div>
+
+<div id="winScreen" class="overlay hidden">
+  <div class="kicker gold">RIFT SEALED</div>
+  <h2 class="gold">裂隙已封闭</h2>
+  <div class="sub">裂隙主宰已被清除，这片维度暂时安全了</div>
+  <div class="stats" id="winStats"></div>
+  <div class="titlebtns">
+    <button class="go" id="winContinue">继续深入（无尽模式）</button>
+    <button class="go alt" id="winMenu">返回主菜单</button>
+  </div>
+  <div class="padhint dim">手柄 A 继续 · B 返回</div>
 </div>
 
 <div id="hangarScreen" class="overlay hidden">

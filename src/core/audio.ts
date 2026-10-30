@@ -20,6 +20,8 @@ export function initAudio(): void {
   }
 }
 
+export const audioContext = (): AudioContext | null => actx;
+
 export function setVolume(v: number): void {
   volume = v;
   if (master) master.gain.value = BASE_GAIN * v;

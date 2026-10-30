@@ -5,6 +5,7 @@ import { rnd, rrand } from '../core/rng';
 import { BALANCE } from '../data/balance';
 import { ENEMIES, SPAWN_TABLE, bossFor, type EnemyKind } from '../data/enemies';
 import { CHALLENGE_TIME, ROOM_INFO, type RoomKind } from '../data/map';
+import { MODS } from '../data/depth';
 
 export interface AABB {
   x0: number;
@@ -224,7 +225,8 @@ export class Room {
     let r = rnd() * pool.reduce((sum, s) => sum + s.weight, 0);
     const s = pool.find(p => (r -= p.weight) <= 0) ?? pool[0];
     const count = s.pack ? s.pack[0] + Math.floor(rnd() * (s.pack[1] - s.pack[0] + 1)) : 1;
-    const eliteChance = n >= E.fromRoom ? Math.min(E.maxChance, E.chance + (n - E.fromRoom) * E.chancePerRoom) : 0;
+    const fromRoom = MODS.eliteBonus > 0 ? 2 : E.fromRoom;
+    const eliteChance = n >= fromRoom ? Math.min(E.maxChance + MODS.eliteBonus, E.chance + MODS.eliteBonus + Math.max(0, n - E.fromRoom) * E.chancePerRoom) : 0;
     const elite = !s.pack && (eliteRoom || rnd() < eliteChance);
     return { kind: s.kind, count, elite };
   }

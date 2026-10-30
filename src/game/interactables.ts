@@ -7,6 +7,7 @@ import { RARITY_LABEL, RARITY_PRICE, ROLL_WEIGHTS, rollUpgrades, type UpgradeDef
 import { STARTING_WEAPON, WEAPONS, type WeaponId } from '../data/weapons';
 import type { Tag } from '../ui/floaters';
 import type { Game } from './game';
+import { MODS } from '../data/depth';
 
 export type Offer =
   | { kind: 'weapon'; id: WeaponId; level: number }
@@ -51,6 +52,10 @@ export class Interactables {
   private focused: Item | null = null;
 
   constructor(private readonly g: Game) {}
+
+  get hasFreeWeapon(): boolean {
+    return this.items.some(it => it.price === 0 && it.offer.kind === 'weapon');
+  }
 
   spawn(offer: Offer, x: number, z: number, price = 0): void {
     const g = this.g, color = offerColor(offer);
@@ -101,7 +106,7 @@ export class Interactables {
 
   setupShop(): void {
     const visit = Math.floor(this.g.room.n / BALANCE.rooms.bossEvery);
-    const scale = 1 + visit * BALANCE.scaling.shopPricePerVisit;
+    const scale = (1 + visit * BALANCE.scaling.shopPricePerVisit) * MODS.priceMul;
     const w1 = this.randomWeapon([]), w2 = this.randomWeapon([w1]);
     const [upgrade] = rollUpgrades(this.g.player, 1, ROLL_WEIGHTS.shop);
     const z = -1;

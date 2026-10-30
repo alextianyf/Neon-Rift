@@ -9,6 +9,7 @@ import { BEHAVIORS, untargetable, type AIFrame } from './enemyAI';
 import { buildEnemyVisual, type EnemyVisual, type VisualState } from './enemyModels';
 import { Rift } from './rift';
 import type { Game } from './game';
+import { MODS } from '../data/depth';
 
 export type AIState = 'move' | 'wind' | 'charge' | 'stun' | 'fuse' | 'aim' | 'beam' | 'spiral' | 'tpout' | 'tpin';
 
@@ -127,7 +128,8 @@ export class Enemies {
       aura.scale.setScalar(def.r * 1.5);
       mesh.add(aura);
     }
-    const hp = def.hp * (1 + (this.g.room.n - 1) * BALANCE.scaling.enemyHpPerRoom) * (elite ? ELITE.hp : 1);
+    const hp = def.hp * (1 + (this.g.room.n - 1) * BALANCE.scaling.enemyHpPerRoom) * (elite ? ELITE.hp : 1)
+      * MODS.enemyHp * (def.boss ? MODS.bossHp : 1);
     this.list.push({
       kind, def, mesh, visual, mat, base: new THREE.Color(def.color),
       pos: new THREE.Vector3(x, 0, z), vel: new THREE.Vector3(), hp, maxHp: hp, r: def.r * size,
