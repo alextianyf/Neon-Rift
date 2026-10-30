@@ -28,19 +28,25 @@ export class Effects {
   shakeScale = 1;  // 0 disables screen shake (settings)
   private hitstopT = 0;
   private readonly particles: Particle[] = [];
+  // Spent particle meshes and their velocity vectors, kept in the scene (hidden) for reuse.
+  private readonly bitPool: { obj: THREE.Mesh; vel: THREE.Vector3 }[] = [];
 
   constructor(private readonly scene: THREE.Scene) {}
 
   burst(pos: PointLike, hex: number, n: number, speed = 8, size = 0.18, life = 0.5, dir?: THREE.Vector3): void {
     for (let i = 0; i < n && this.particles.length < MAX_PARTICLES; i++) {
-      const m = new THREE.Mesh(GEO.particle, glowMat(hex));
+      const pooled = this.bitPool.pop();
+      const m = pooled?.obj ?? new THREE.Mesh(GEO.particle, glowMat(hex));
+      const vel = pooled?.vel ?? new THREE.Vector3();
+      if (pooled) { m.material = glowMat(hex); m.visible = true; m.rotation.set(0, 0, 0); }
+      else this.scene.add(m);
       m.position.set(pos.x, Math.max(pos.y ?? 0.6, 0.4), pos.z);
       const a = dir ? Math.atan2(dir.x, dir.z) + rand(-0.6, 0.6) : Math.random() * Math.PI * 2;
       const s = rand(0.3, 1) * speed;
       const sz = size * rand(0.6, 1.3);
       m.scale.setScalar(sz);
-      this.scene.add(m);
-      this.particles.push({ kind: 'bit', obj: m, vel: new THREE.Vector3(Math.sin(a) * s, rand(1, 5), Math.cos(a) * s), life, max: life, size: sz });
+      vel.set(Math.sin(a) * s, rand(1, 5), Math.cos(a) * s);
+      this.particles.push({ kind: 'bit', obj: m, vel, life, max: life, size: sz });
     }
   }
 
@@ -140,6 +146,11 @@ export class Effects {
   }
 
   private remove(p: Particle): void {
+    if (p.kind === 'bit') {
+      p.obj.visible = false;
+      this.bitPool.push({ obj: p.obj as THREE.Mesh, vel: p.vel });
+      return;
+    }
     this.scene.remove(p.obj);
     // derez ghosts share the enemy's geometry, so only their material is theirs
     if (p.kind === 'ring' || p.kind === 'derez') (p.obj.material as THREE.Material).dispose();

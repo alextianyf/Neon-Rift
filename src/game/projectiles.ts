@@ -51,16 +51,16 @@ const tmpDir = new THREE.Vector3();
 export class Projectiles {
   private readonly bullets: Bullet[] = [];
   private readonly enemyBullets: EnemyBullet[] = [];
+  private readonly pool: THREE.Mesh[] = [];  // hidden spare bullet meshes, still in the scene
 
   constructor(private readonly g: Game) {}
 
   firePlayer(origin: THREE.Vector3, angle: number, speed: number, w: WeaponDef, shot: ShotStats): void {
-    const m = new THREE.Mesh(GEO.sphere, glowMat(w.color, w.glow ?? 3));
+    const m = this.acquire(glowMat(w.color, w.glow ?? 3));
     m.scale.setScalar(w.size);
     m.scale.z = w.size * (w.stretch ?? 2.4);
     m.rotation.y = angle;
     m.position.copy(origin);
-    this.g.gfx.scene.add(m);
     this.bullets.push({
       mesh: m, vel: new THREE.Vector3(Math.sin(angle) * speed, 0, Math.cos(angle) * speed), life: w.life,
       dmg: shot.dmg, knock: w.knock, pierce: shot.pierce, bounce: shot.bounce, blast: shot.blast,
@@ -70,12 +70,11 @@ export class Projectiles {
   }
 
   fireEnemy(pos: THREE.Vector3, angle: number, speed: number, color: number, y = 0.8, dmg = ENEMY_BULLET_DMG, life = 4): void {
-    const m = new THREE.Mesh(GEO.sphere, glowMat(color, 3));
+    const m = this.acquire(glowMat(color, 3));
     m.scale.setScalar(ENEMY_BULLET_RADIUS);
     if (speed > 20) m.scale.z = ENEMY_BULLET_RADIUS * 4;  // fast sniper rounds read as streaks
     m.rotation.y = angle;
     m.position.set(pos.x + Math.sin(angle) * 0.8, y, pos.z + Math.cos(angle) * 0.8);
-    this.g.gfx.scene.add(m);
     this.enemyBullets.push({ mesh: m, vel: new THREE.Vector3(Math.sin(angle) * speed, 0, Math.cos(angle) * speed), life, r: ENEMY_BULLET_RADIUS, dmg });
   }
 
@@ -101,23 +100,42 @@ export class Projectiles {
     this.updateEnemyBullets(dt);
   }
 
+  // Reuse a spent bullet mesh if there is one; avoids allocating hundreds of meshes per second.
+  private acquire(mat: THREE.Material): THREE.Mesh {
+    const m = this.pool.pop();
+    if (m) {
+      m.material = mat;
+      m.visible = true;
+      m.rotation.set(0, 0, 0);
+      return m;
+    }
+    const fresh = new THREE.Mesh(GEO.sphere, mat);
+    this.g.gfx.scene.add(fresh);
+    return fresh;
+  }
+
+  private release(m: THREE.Mesh): void {
+    m.visible = false;
+    this.pool.push(m);
+  }
+
   clearEnemyBulletsNear(pos: THREE.Vector3, radius: number): void {
     for (let i = this.enemyBullets.length - 1; i >= 0; i--) {
       const b = this.enemyBullets[i], p = b.mesh.position;
       if (Math.hypot(p.x - pos.x, p.z - pos.z) > radius) continue;
       this.g.fx.burst(p, 0x66ccff, 2, 3, 0.1, 0.2);
-      this.g.gfx.scene.remove(b.mesh);
+      this.release(b.mesh);
       this.enemyBullets.splice(i, 1);
     }
   }
 
   clearEnemyBullets(): void {
-    for (const b of this.enemyBullets) this.g.gfx.scene.remove(b.mesh);
+    for (const b of this.enemyBullets) this.release(b.mesh);
     this.enemyBullets.length = 0;
   }
 
   clear(): void {
-    for (const b of this.bullets) this.g.gfx.scene.remove(b.mesh);
+    for (const b of this.bullets) this.release(b.mesh);
     this.bullets.length = 0;
     this.clearEnemyBullets();
   }
@@ -216,7 +234,7 @@ export class Projectiles {
 
       if (dead) {
         if (b.blast) this.explode(pos, b.blast, b.dmg * 1.6 * g.player.blastDmgMul, b.color);
-        g.gfx.scene.remove(b.mesh);
+        this.release(b.mesh);
         this.bullets.splice(i, 1);
       } else if (b.blast && Math.random() < 0.7) {
         g.fx.burst(pos, b.color, 1, 1, 0.15, 0.25);  // rocket / grenade trail
@@ -236,7 +254,7 @@ export class Projectiles {
         dead = true;
       }
       if (dead) {
-        g.gfx.scene.remove(b.mesh);
+        this.release(b.mesh);
         this.enemyBullets.splice(i, 1);
       }
     }
