@@ -111,6 +111,14 @@ export class Interactables {
     this.spawn({ kind: 'heal', amount: BALANCE.shop.healAmount }, 6, z, Math.round(BALANCE.shop.healPrice * scale));
   }
 
+  // Treasure vault: a free weapon, a free module and a pile of shards.
+  setupTreasure(): void {
+    const [upgrade] = rollUpgrades(this.g.player, 1, ROLL_WEIGHTS.treasure);
+    this.spawn({ kind: 'weapon', id: this.randomWeapon([]), level: 1 }, -3.5, 0.5);
+    if (upgrade) this.spawn({ kind: 'upgrade', upgrade }, 3.5, 0.5);
+    this.g.pickups.spawnCoins(0, 2.5, Math.round(15 + this.g.room.n * 2));
+  }
+
   update(dt: number): void {
     const p = this.g.player;
     let best: Item | null = null, bestD = REACH;

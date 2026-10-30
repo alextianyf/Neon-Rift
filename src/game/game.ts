@@ -4,9 +4,10 @@ import { Graphics } from '../core/graphics';
 import { Input } from '../core/input';
 import { BALANCE } from '../data/balance';
 import { ENEMIES } from '../data/enemies';
+import { ROOM_INFO, rollPaths, type RoomKind } from '../data/map';
 import { ROLL_WEIGHTS, UPGRADES, rollUpgrades, type UpgradeDef } from '../data/upgrades';
 import { MAX_WEAPON_SLOTS } from '../data/weapons';
-import { Floaters } from '../ui/floaters';
+import { Floaters, type Tag } from '../ui/floaters';
 import { Hud } from '../ui/hud';
 import { Screens, type BuildEntry, type StatLine } from '../ui/screens';
 import { loadSettings, saveSettings, type Settings } from '../ui/settings';
@@ -56,6 +57,8 @@ export class Game {
   private readonly clock = new THREE.Clock();
   private upgradeChoices: UpgradeDef[] = [];
   private settings: Settings = loadSettings();
+  private portalTags: Tag[] = [];
+  private challengeSpawnT = 0;
 
   constructor() {
     this.bindInput();
@@ -66,7 +69,7 @@ export class Game {
     this.applySettings(this.settings);
 
     // backdrop for the title screen
-    this.room.build(1);
+    this.room.build(1, 'combat');
     this.atmosphere.build(this.room);
     this.player.pos.set(0, 0, 3);
     this.player.mesh.position.copy(this.player.pos);
@@ -106,7 +109,7 @@ export class Game {
     this.hud.show(true);
     this.screens.hideAll();
     this.screens.setCrosshair(true);
-    this.enterRoom(1);
+    this.enterRoom(1, 'combat');
     this.state = 'play';
   }
 
@@ -223,8 +226,10 @@ export class Game {
     this.pickups.update(dt);
     this.interactables.update(dt);
     this.hazards.update(dt);
-    this.checkClear(dt);
-    if (this.state === 'play' && this.room.portalReached(this.player.pos)) this.goThroughPortal();
+    if (this.room.kind === 'challenge') this.updateChallenge(dt);
+    else this.checkClear(dt);
+    const path = this.state === 'play' ? this.room.portalReached(this.player.pos) : null;
+    if (path) this.goThroughPortal(path);
     this.coinsEarned += Math.max(0, this.player.coins - coinsBefore);
 
     if (this.combo > 0) {
@@ -251,14 +256,16 @@ export class Game {
 
   private spawnDue(): void {
     for (const s of this.room.takeDueSpawns()) {
-      const [x, z] = s.kind === 'boss'
+      const [x, z] = ENEMIES[s.kind].boss
         ? [0, -this.room.hh * 0.45]
         : this.room.findSpawn(this.player.pos, BALANCE.rooms.spawnMinDist, ENEMIES[s.kind].r);
-      this.enemies.addMarker(s.kind, x, z, s.kind === 'boss' ? 1.5 : 0.75, s.count, s.elite);
+      this.enemies.addMarker(s.kind, x, z, ENEMIES[s.kind].boss ? 1.5 : 0.75, s.count, s.elite);
     }
   }
 
-  private enterRoom(n: number): void {
+  private enterRoom(n: number, kind: RoomKind): void {
+    for (const t of this.portalTags) this.floaters.removeTag(t);
+    this.portalTags = [];
     this.enemies.clear();
     this.projectiles.clear();
     this.pickups.clear();
@@ -266,7 +273,7 @@ export class Game {
     this.fx.clear();
     this.floaters.clear();
     this.hazards.clear();
-    this.room.build(n);
+    this.room.build(n, kind);
     this.atmosphere.build(this.room);
     this.hazards.build();
     this.room.plan();
@@ -275,12 +282,20 @@ export class Game {
     this.player.shield = this.player.shieldMax;
     this.gfx.snapCamera(this.player.pos.x, this.player.pos.z);
 
-    if (this.room.kind === 'shop') {
+    this.challengeSpawnT = 1;
+    const name = ROOM_INFO[kind].name;
+    if (kind === 'shop') {
       this.interactables.setupShop();
-      this.room.openPortal(0, -this.room.hh + 3.5);
+      this.openPaths();
       this.hud.toast('黑市终端 · 走近按 E 交易');
+    } else if (kind === 'treasure') {
+      this.interactables.setupTreasure();
+      this.openPaths();
+      this.hud.toast('数据宝库 · 免费拾取');
+    } else if (kind === 'boss') {
+      this.hud.toast('⚠ 裂隙核心');
     } else {
-      this.hud.toast(this.room.isBoss ? '⚠ 裂隙核心' : `扇区 ${String(n).padStart(2, '0')}`);
+      this.hud.toast(kind === 'combat' ? `扇区 ${String(n).padStart(2, '0')}` : name);
     }
   }
 
@@ -299,7 +314,7 @@ export class Game {
       this.hud.toast('扇区已净化');
       sfx.clear();
       this.projectiles.clearEnemyBullets();
-      if (room.isBoss || room.n <= 2 || Math.random() < BALANCE.rooms.weaponDropChance) {
+      if (room.isBoss || room.kind === 'elite' || room.n <= 2 || Math.random() < BALANCE.rooms.weaponDropChance) {
         this.interactables.spawnWeaponDrop(room.lootSpot.x, room.lootSpot.z);
       }
     }
@@ -313,9 +328,11 @@ export class Game {
     this.state = 'upgrade';
     this.input.mouseDown = false;
     this.hud.prompt(null);
-    const boss = this.room.isBoss;
-    this.upgradeChoices = rollUpgrades(this.player, BALANCE.rooms.upgradeChoices, boss ? ROLL_WEIGHTS.boss : ROLL_WEIGHTS.room);
-    this.screens.showUpgrades(this.upgradeChoices, boss ? '核心战利品 · 选择一个模块' : '选择一个模块', i => this.pickUpgrade(i));
+    const kind = this.room.kind;
+    const weights = kind === 'boss' || kind === 'elite' ? ROLL_WEIGHTS.boss : kind === 'challenge' ? ROLL_WEIGHTS.challenge : ROLL_WEIGHTS.room;
+    const title = kind === 'boss' ? '核心战利品 · 选择一个模块' : kind === 'challenge' ? '挑战完成 · 选择一个模块' : '选择一个模块';
+    this.upgradeChoices = rollUpgrades(this.player, BALANCE.rooms.upgradeChoices, weights);
+    this.screens.showUpgrades(this.upgradeChoices, title, i => this.pickUpgrade(i));
   }
 
   private pickUpgrade(i: number): void {
@@ -325,17 +342,56 @@ export class Game {
     this.screens.toggle('upgradeScreen', false);
     this.screens.setCrosshair(true);
     this.state = 'play';
-    this.room.openPortal();
-    sfx.portal();
-    this.hud.toast('裂隙通道已开启');
+    this.openPaths();
   }
 
-  private goThroughPortal(): void {
+  // Open the exit portals: one per offered next sector, each with a floating label.
+  private openPaths(): void {
+    const kinds = rollPaths(this.room.n + 1, this.room.kind);
+    this.room.openPortals(kinds);
+    for (const p of this.room.portals) {
+      const info = ROOM_INFO[p.kind];
+      const color = `#${info.color.toString(16).padStart(6, '0')}`;
+      this.portalTags.push(this.floaters.addTag(p.pos.x, 0.3, p.pos.z + 1.9, `<b style="color:${color}">${info.name}</b><span class="price" style="color:#cfd8ef">${info.desc}</span>`));
+    }
+    sfx.portal();
+    this.hud.toast(kinds.length > 1 ? '选择下一个扇区' : '裂隙通道已开启');
+  }
+
+  // Challenge sectors: survive the timer while enemies keep pouring in, then everything dissolves.
+  private updateChallenge(dt: number): void {
+    const room = this.room;
+    if (!room.cleared) {
+      room.challengeT -= dt;
+      this.challengeSpawnT -= dt;
+      if (this.challengeSpawnT <= 0) {
+        // spawns speed up as the clock runs down
+        this.challengeSpawnT = 0.7 + 0.9 * (room.challengeT / 30);
+        const s = room.rollSpawn();
+        const [x, z] = room.findSpawn(this.player.pos, BALANCE.rooms.spawnMinDist, ENEMIES[s.kind].r);
+        this.enemies.addMarker(s.kind, x, z, 0.75, s.count, s.elite);
+      }
+      if (room.challengeT <= 0) {
+        this.enemies.purge();
+        room.cleared = true;
+        room.clearT = 1.2;
+        this.hud.toast('挑战完成');
+        sfx.clear();
+        this.projectiles.clearEnemyBullets();
+      }
+    }
+    if (room.clearT > 0) {
+      room.clearT -= dt;
+      if (room.clearT <= 0) this.openUpgrade();
+    }
+  }
+
+  private goThroughPortal(kind: RoomKind): void {
     this.state = 'transition';
     sfx.portal();
-    this.hud.fade(true, `SECTOR ${String(this.room.n + 1).padStart(2, '0')} // 跃迁中`);
+    this.hud.fade(true, `SECTOR ${String(this.room.n + 1).padStart(2, '0')} // ${ROOM_INFO[kind].name}`);
     setTimeout(() => {
-      this.enterRoom(this.room.n + 1);
+      this.enterRoom(this.room.n + 1, kind);
       this.hud.fade(false);
       this.state = 'play';
     }, 550);

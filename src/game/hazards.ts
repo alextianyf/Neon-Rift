@@ -3,6 +3,7 @@ import { disposeTree, glowMat } from '../core/assets';
 import { sfx } from '../core/audio';
 import { rand } from '../core/math';
 import { BALANCE } from '../data/balance';
+import { isCombatKind } from '../data/map';
 import type { AABB } from './room';
 import type { Game } from './game';
 import { Rift } from './rift';
@@ -15,9 +16,12 @@ const SLUDGE_COLOR = 0x39ffb0;
 const ACID_COLOR = 0xff2fa0;
 const BARREL_COLOR = 0xffc83d;
 const RIFT_COLOR = 0xb455ff;
+const GRID_COLOR = 0x9fd8ff;
+const COVER_COLOR = 0x6c8cff;
 
 type ZoneKind = 'sludge' | 'acid';
-type HazardType = ZoneKind | 'barrel';
+type HazardType = ZoneKind | 'barrel' | 'grid' | 'cover';
+type GridPhase = 'off' | 'warn' | 'on';
 
 interface Zone {
   kind: ZoneKind;
@@ -38,6 +42,30 @@ interface Barrel {
   aabb: AABB;
 }
 
+// Electric fence between two pylons that cycles off -> warning -> on.
+interface Grid {
+  x: number;  // midpoint, for spacing checks
+  z: number;
+  a: THREE.Vector3;
+  b: THREE.Vector3;
+  phase: GridPhase;
+  timer: number;
+  tick: number;
+  group: THREE.Group;
+  beam: THREE.Mesh<THREE.BoxGeometry, THREE.MeshBasicMaterial>;
+  pylons: AABB[];
+}
+
+// Crate that blocks shots from both sides until it's shot apart.
+interface Cover {
+  x: number;
+  z: number;
+  hp: number;
+  maxHp: number;
+  group: THREE.Group;
+  aabb: AABB;
+}
+
 interface UnstableRift {
   x: number;
   z: number;
@@ -46,6 +74,12 @@ interface UnstableRift {
   rift: Rift;
   spawnT: number;
   closed: boolean;
+}
+
+function distToSegment(p: THREE.Vector3, a: THREE.Vector3, b: THREE.Vector3): number {
+  const abx = b.x - a.x, abz = b.z - a.z;
+  const t = Math.max(0, Math.min(1, ((p.x - a.x) * abx + (p.z - a.z) * abz) / (abx * abx + abz * abz)));
+  return Math.hypot(p.x - (a.x + abx * t), p.z - (a.z + abz * t));
 }
 
 function circleLine(r: number, color: number, k: number, y: number): THREE.LineLoop {
@@ -61,6 +95,8 @@ export class Hazards {
   private zones: Zone[] = [];
   private barrels: Barrel[] = [];
   private rifts: UnstableRift[] = [];
+  private grids: Grid[] = [];
+  private covers: Cover[] = [];
   private t = 0;
   private drainFlash = 0;
 
@@ -74,13 +110,20 @@ export class Hazards {
   build(): void {
     this.clear();
     const room = this.g.room, n = room.n;
-    if (room.kind !== 'combat' || n < H.fromRoom) return;
+    if (!isCombatKind(room.kind) || n < H.fromRoom) return;
 
-    const types: HazardType[] = ['sludge', 'acid', 'barrel'].sort(() => Math.random() - 0.5) as HazardType[];
+    const types: HazardType[] = (['sludge', 'acid', 'barrel', 'grid', 'cover'] as HazardType[]).sort(() => Math.random() - 0.5);
     const chosen = types.slice(0, n >= H.twoTypesFromRoom ? 2 : 1);
     const scale = (room.hw * room.hh) / (18 * 12);
     for (const type of chosen) {
-      if (type === 'barrel') {
+      if (type === 'grid') {
+        for (let i = 0, count = Math.max(1, Math.round(2 * scale)); i < count; i++) this.tryAddGrid();
+      } else if (type === 'cover') {
+        for (let i = 0, count = Math.round((4 + Math.random() * 3) * scale); i < count; i++) {
+          const spot = this.findSpot(1.2);
+          if (spot) this.addCover(spot[0], spot[1]);
+        }
+      } else if (type === 'barrel') {
         for (let c = 0, clusters = Math.round(3 * scale); c < clusters; c++) {
           const spot = this.findSpot(1.6);
           if (!spot) continue;
@@ -120,6 +163,7 @@ export class Hazards {
       if (b.hp <= 0) b.fuse = 0.05;
       return true;
     }
+    if (this.hitCover(pos, dmg)) return true;
     for (const r of this.rifts) {
       if (r.closed || Math.hypot(pos.x - r.x, pos.z - r.z) > 1.0) continue;
       r.hp -= dmg;
@@ -132,10 +176,17 @@ export class Hazards {
     return false;
   }
 
-  // Explosions set off nearby barrels (chain reactions).
+  // An enemy bullet at `pos`: cover soaks it up and takes damage.
+  hitByEnemyShot(pos: THREE.Vector3, dmg: number): boolean {
+    return this.hitCover(pos, dmg);
+  }
+
+  // Explosions set off nearby barrels (chain reactions) and smash cover.
   explodeAt(pos: THREE.Vector3, radius: number): void {
     for (const b of this.barrels)
       if (b.fuse <= 0 && Math.hypot(pos.x - b.x, pos.z - b.z) < radius + 0.4) b.fuse = rand(0.1, 0.22);
+    for (const c of [...this.covers])
+      if (Math.hypot(pos.x - c.x, pos.z - c.z) < radius + 0.7) this.damageCover(c, 40);
   }
 
   update(dt: number): void {
@@ -173,6 +224,8 @@ export class Hazards {
       }
     }
 
+    for (const gr of this.grids) this.updateGrid(gr, dt);
+
     for (const r of [...this.rifts]) {
       r.rift.update(dt, g.gfx.camera);
       if (r.closed) {
@@ -204,9 +257,20 @@ export class Hazards {
       if (i >= 0) room.obstacles.splice(i, 1);
     }
     for (const r of this.rifts) r.rift.dispose(scene);
+    for (const gr of this.grids) {
+      scene.remove(gr.group);
+      disposeTree(gr.group);
+      for (const a of gr.pylons) {
+        const i = room.obstacles.indexOf(a);
+        if (i >= 0) room.obstacles.splice(i, 1);
+      }
+    }
+    for (const c of this.covers) this.removeCover(c);
     this.zones = [];
     this.barrels = [];
     this.rifts = [];
+    this.grids = [];
+    this.covers = [];
   }
 
   private findSpot(r: number): [number, number] | null {
@@ -214,7 +278,7 @@ export class Hazards {
     for (let i = 0; i < 60; i++) {
       const x = rand(-room.hw + r + 1, room.hw - r - 1), z = rand(-room.hh + r + 1, room.hh - r - 1);
       if (!room.isFree(x, z, r * 0.6)) continue;
-      const clash = [...this.zones, ...this.rifts, ...this.barrels].some(h =>
+      const clash = [...this.zones, ...this.rifts, ...this.barrels, ...this.grids, ...this.covers].some(h =>
         Math.hypot(h.x - x, h.z - z) < r + ('r' in h ? h.r : 1.5) + 1);
       if (!clash) return [x, z];
     }
@@ -270,6 +334,124 @@ export class Hazards {
     const pos = new THREE.Vector3(b.x, 0, b.z);
     g.projectiles.explode(pos, H.barrelRadius, H.barrelDmg * (1 + (room.n - 1) * 0.08), BARREL_COLOR);
     if (Math.hypot(g.player.pos.x - b.x, g.player.pos.z - b.z) < H.barrelRadius) g.damagePlayer(H.barrelPlayerDmg, pos);
+  }
+
+  // A fence between two pylons across open floor; skipped if no clear line is found.
+  private tryAddGrid(): void {
+    const room = this.g.room;
+    for (let i = 0; i < 40; i++) {
+      const spot = this.findSpot(1.2);
+      if (!spot) return;
+      const len = rand(5, 9), ang = Math.random() * Math.PI;
+      const dx = Math.cos(ang) * len / 2, dz = Math.sin(ang) * len / 2;
+      const a = new THREE.Vector3(spot[0] - dx, 0, spot[1] - dz), b = new THREE.Vector3(spot[0] + dx, 0, spot[1] + dz);
+      // the whole line must be walkable and away from the hub and entry
+      let ok = true;
+      for (let k = 0; k <= 8 && ok; k++) {
+        const t = k / 8;
+        ok = room.isFree(a.x + (b.x - a.x) * t, a.z + (b.z - a.z) * t, 0.6);
+      }
+      if (!ok) continue;
+      this.addGrid(a, b);
+      return;
+    }
+  }
+
+  private addGrid(a: THREE.Vector3, b: THREE.Vector3): void {
+    const g = this.g, room = g.room;
+    const group = new THREE.Group();
+    const pylons: AABB[] = [];
+    for (const p of [a, b]) {
+      const pylon = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.3, 1.5, 8), new THREE.MeshStandardMaterial({ color: 0x1c2233, metalness: 0.6, roughness: 0.4 }));
+      pylon.position.set(p.x, 0.75, p.z);
+      const top = new THREE.Mesh(new THREE.OctahedronGeometry(0.2), glowMat(GRID_COLOR, 2.2));
+      top.position.set(p.x, 1.6, p.z);
+      group.add(pylon, top);
+      const box: AABB = { x0: p.x - 0.3, x1: p.x + 0.3, z0: p.z - 0.3, z1: p.z + 0.3 };
+      room.obstacles.push(box);
+      pylons.push(box);
+    }
+    const len = a.distanceTo(b);
+    const beam = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.08, len), new THREE.MeshBasicMaterial({ color: new THREE.Color(GRID_COLOR).multiplyScalar(3), transparent: true, opacity: 0 }));
+    beam.position.set((a.x + b.x) / 2, 0.9, (a.z + b.z) / 2);
+    beam.rotation.y = Math.atan2(b.x - a.x, b.z - a.z);
+    group.add(beam);
+    g.gfx.scene.add(group);
+    this.grids.push({ x: beam.position.x, z: beam.position.z, a, b, phase: 'off', timer: rand(0.5, 2.5), tick: 0, group, beam, pylons });
+  }
+
+  private updateGrid(gr: Grid, dt: number): void {
+    const g = this.g;
+    gr.timer -= dt;
+    if (gr.timer <= 0) {
+      gr.phase = gr.phase === 'off' ? 'warn' : gr.phase === 'warn' ? 'on' : 'off';
+      gr.timer = gr.phase === 'off' ? H.gridOff : gr.phase === 'warn' ? H.gridWarn : H.gridOn;
+      if (gr.phase === 'on') sfx.zap();
+    }
+    const m = gr.beam.material;
+    if (gr.phase === 'off') { m.opacity = 0; return; }
+    if (gr.phase === 'warn') {
+      m.opacity = Math.random() < 0.5 ? 0.15 : 0.5;  // flickering telegraph
+      gr.beam.scale.set(0.4, 0.4, 1);
+      return;
+    }
+    m.opacity = 0.85 + Math.random() * 0.15;
+    gr.beam.scale.set(1 + Math.random() * 0.6, 1 + Math.random() * 0.6, 1);
+    if (Math.random() < dt * 12) g.fx.lightning({ x: gr.a.x, y: 0.9, z: gr.a.z }, { x: gr.b.x, y: 0.9, z: gr.b.z }, GRID_COLOR);
+    const p = g.player;
+    if (distToSegment(p.pos, gr.a, gr.b) < p.r + 0.15) g.damagePlayer(H.gridPlayerDmg, null);
+    gr.tick -= dt;
+    if (gr.tick <= 0) {
+      gr.tick = 0.3;
+      for (const e of [...g.enemies.list])
+        if (distToSegment(e.pos, gr.a, gr.b) < e.r + 0.15) g.enemies.damage(e, H.gridEnemyDmg, { dot: true });
+    }
+  }
+
+  private addCover(x: number, z: number): void {
+    const group = new THREE.Group();
+    group.position.set(x, 0, z);
+    const w = rand(1.2, 1.8), d = rand(0.6, 1.0), h = 1.1;
+    const [sx, sz] = Math.random() < 0.5 ? [d, w] : [w, d];
+    const geo = new THREE.BoxGeometry(sx, h, sz);
+    const body = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color: 0x1b2135, metalness: 0.3, roughness: 0.6, emissive: 0x0a1020 }));
+    body.position.y = h / 2;
+    const edges = new THREE.LineSegments(new THREE.EdgesGeometry(geo), new THREE.LineBasicMaterial({ color: new THREE.Color(COVER_COLOR).multiplyScalar(2.2) }));
+    edges.position.y = h / 2;
+    group.add(body, edges);
+    this.g.gfx.scene.add(group);
+    const aabb: AABB = { x0: x - sx / 2, x1: x + sx / 2, z0: z - sz / 2, z1: z + sz / 2 };
+    this.g.room.obstacles.push(aabb);
+    const hp = H.coverHp * (1 + (this.g.room.n - 1) * 0.05);
+    this.covers.push({ x, z, hp, maxHp: hp, group, aabb });
+  }
+
+  private hitCover(pos: THREE.Vector3, dmg: number): boolean {
+    for (const c of this.covers) {
+      const a = c.aabb;
+      if (pos.x < a.x0 - 0.1 || pos.x > a.x1 + 0.1 || pos.z < a.z0 - 0.1 || pos.z > a.z1 + 0.1) continue;
+      this.damageCover(c, dmg);
+      this.g.fx.burst(pos, COVER_COLOR, 2, 4, 0.1, 0.2);
+      return true;
+    }
+    return false;
+  }
+
+  private damageCover(c: Cover, dmg: number): void {
+    c.hp -= dmg;
+    c.group.scale.set(1, 0.6 + 0.4 * Math.max(0, c.hp / c.maxHp), 1);  // visibly crumbles
+    if (c.hp > 0) return;
+    this.g.fx.burst({ x: c.x, y: 0.6, z: c.z }, COVER_COLOR, 18, 6, 0.2, 0.6);
+    sfx.kill();
+    this.removeCover(c);
+    this.covers.splice(this.covers.indexOf(c), 1);
+  }
+
+  private removeCover(c: Cover): void {
+    this.g.gfx.scene.remove(c.group);
+    disposeTree(c.group);
+    const i = this.g.room.obstacles.indexOf(c.aabb);
+    if (i >= 0) this.g.room.obstacles.splice(i, 1);
   }
 
   private addRift(x: number, z: number): void {

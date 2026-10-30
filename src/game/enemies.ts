@@ -5,12 +5,23 @@ import { rand } from '../core/math';
 import { BALANCE } from '../data/balance';
 import { ENEMIES, type EnemyDef, type EnemyKind } from '../data/enemies';
 import type { Element } from '../data/weapons';
-import { BEHAVIORS, type AIFrame } from './enemyAI';
+import { BEHAVIORS, untargetable, type AIFrame } from './enemyAI';
 import { buildEnemyVisual, type EnemyVisual, type VisualState } from './enemyModels';
 import { Rift } from './rift';
 import type { Game } from './game';
 
-export type AIState = 'move' | 'wind' | 'charge' | 'stun';
+export type AIState = 'move' | 'wind' | 'charge' | 'stun' | 'fuse' | 'aim' | 'beam' | 'spiral' | 'tpout' | 'tpin';
+
+// Delayed explosion from a dying bomber; queued so chain reactions unfold over a few frames.
+interface Blast {
+  x: number;
+  z: number;
+  t: number;
+  dmg: number;
+}
+
+const BOMBER_RADIUS = 2.6;
+const BOMBER_ENEMY_DMG = 30;
 
 export interface Enemy {
   kind: EnemyKind;
@@ -43,6 +54,9 @@ export interface Enemy {
   spawnT: number;      // materialize animation; harmless until it reaches 0
   elite: boolean;
   size: number;        // visual and collision scale (elites are bigger)
+  charge: number;      // 0..1 attack telegraph this frame, set by behaviors
+  beamAngle: number;   // weaver lasers / sovereign spiral angle
+  beamPhase: number;   // weaver lasers: 0 off, 1 warning, 2 firing
 }
 
 export interface HitInfo {
@@ -71,11 +85,13 @@ const SHOCK_COLOR = 0x8fb8ff;
 const BURN_TINT = new THREE.Color(0xff7a2a);
 const tint = new THREE.Color();
 const frame: AIFrame = { toP: new THREE.Vector3(), dist: 0, spd: 0, desired: new THREE.Vector3(), dt: 0 };
-const vis: VisualState = { t: 0, charge: 0, enraged: false, stunned: false };
+const vis: VisualState = { t: 0, charge: 0, enraged: false, stunned: false, beamAngle: 0, beamPhase: 0 };
 
 export class Enemies {
   readonly list: Enemy[] = [];
   private readonly markers: Marker[] = [];
+  private readonly blasts: Blast[] = [];
+  private purging = false;
 
   constructor(private readonly g: Game) {}
 
@@ -85,12 +101,12 @@ export class Enemies {
   }
 
   get boss(): Enemy | undefined {
-    return this.list.find(e => e.kind === 'boss');
+    return this.list.find(e => e.def.boss);
   }
 
   addMarker(kind: EnemyKind, x: number, z: number, t = 0.75, count = 1, elite = false): void {
     const def = ENEMIES[kind];
-    const height = kind === 'boss' ? 6 : Math.max(1.6, def.r * 2.6) * (count > 1 ? 1.4 : 1) * (elite ? 1.4 : 1);
+    const height = def.boss ? 6 : Math.max(1.6, def.r * 2.6) * (count > 1 ? 1.4 : 1) * (elite ? 1.4 : 1);
     const color = elite ? 0xffc83d : def.color;
     this.markers.push({ kind, rift: new Rift(this.g.gfx.scene, x, z, height, t, color), spawned: false, count, elite });
   }
@@ -117,10 +133,10 @@ export class Enemies {
       cd: rand(0.8, 1.8), flash: 0, state: 'move', stateT: 0, dir: new THREE.Vector3(),
       side: Math.random() < 0.5 ? -1 : 1, t: Math.random() * 10, pattern: 0, burst: 0, burstT: 0,
       enraged: false, scale: 1, burnT: 0, burnDps: 0, burnTick: 0, frostT: 0, spawnT: MATERIALIZE_TIME,
-      elite, size,
+      elite, size, charge: 0, beamAngle: 0, beamPhase: 0,
     });
     mesh.scale.setScalar(0.01);
-    if (kind === 'boss') this.g.hud.showBossBar(true, def.name);
+    if (def.boss) this.g.hud.showBossBar(true, def.name);
   }
 
   damage(e: Enemy, dmg: number, hit: HitInfo = {}): void {
@@ -152,6 +168,7 @@ export class Enemies {
 
   update(dt: number): void {
     this.updateMarkers(dt);
+    this.updateBlasts(dt);
     const g = this.g, player = g.player;
     const speedBonus = Math.min(BALANCE.scaling.enemySpeedMaxBonus, (g.room.n - 1) * BALANCE.scaling.enemySpeedPerRoom);
 
@@ -167,6 +184,7 @@ export class Enemies {
       e.cd -= dt * slow;
       e.flash -= dt;
       e.scale = 1;
+      e.charge = 0;
 
       const { toP, desired } = frame;
       toP.set(player.pos.x - e.pos.x, 0, player.pos.z - e.pos.z);
@@ -201,34 +219,78 @@ export class Enemies {
         e.spawnT -= dt;
         const k = 1 - Math.max(0, e.spawnT) / MATERIALIZE_TIME;
         e.scale *= k < 1 ? k * (1 + Math.sin(e.t * 60) * 0.15) : 1;  // glitchy flicker while forming
-      } else if (frame.dist < e.r + player.r) {
+      } else if (frame.dist < e.r + player.r && e.kind !== 'bomber' && !untargetable(e)) {
         g.damagePlayer((e.state === 'charge' ? def.dmg * 1.4 : def.dmg) * (e.elite ? ELITE.dmg : 1), e.pos);
       }
 
+      const floats = e.kind === 'shooter' || e.kind === 'summoner';
       e.mesh.position.set(
-        e.pos.x + (e.state === 'wind' ? rand(-0.08, 0.08) : 0),
-        def.y + (e.kind === 'shooter' ? Math.sin(e.t * 4) * 0.15 : 0),
+        e.pos.x + (e.state === 'wind' || e.state === 'fuse' ? rand(-0.08, 0.08) : 0),
+        def.y + (floats ? Math.sin(e.t * 4) * 0.15 : 0),
         e.pos.z,
       );
-      if (e.kind !== 'boss') e.mesh.rotation.y = Math.atan2(toP.x, toP.z) + (e.kind === 'shooter' ? e.t * 2 : 0);
+      if (!def.boss) {
+        // a sniper's locked shot keeps pointing where it will fire
+        const face = e.kind === 'sniper' && e.state === 'aim' ? e.dir : toP;
+        e.mesh.rotation.y = Math.atan2(face.x, face.z) + (e.kind === 'shooter' ? e.t * 2 : 0);
+      }
       e.mesh.scale.setScalar(e.scale * e.size);
       vis.t = e.t;
-      vis.charge = e.kind === 'shooter' ? Math.max(0, 0.35 - e.cd) / 0.35 : e.state === 'wind' ? 1 : 0;
+      vis.charge = e.charge;
       vis.enraged = e.enraged;
       vis.stunned = e.state === 'stun';
+      vis.beamAngle = e.beamAngle;
+      vis.beamPhase = e.beamPhase;
       e.visual.animate(dt, vis);
       this.paint(e);
     }
   }
 
   clear(): void {
-    for (const e of this.list) {
-      this.g.gfx.scene.remove(e.mesh);
-      e.mat.dispose();
-    }
+    for (const e of this.list) this.removeVisual(e);
     for (const m of this.markers) m.rift.dispose(this.g.gfx.scene);
     this.list.length = 0;
     this.markers.length = 0;
+    this.blasts.length = 0;
+  }
+
+  // End of a challenge: every enemy dissolves (still dropping its rewards) and pending rifts close.
+  purge(): void {
+    for (const m of this.markers) {
+      if (!m.spawned) { m.spawned = true; m.rift.close(); }
+    }
+    this.purging = true;  // no splits or bomber blasts while the room is being wiped
+    for (const e of [...this.list]) this.damage(e, e.hp + 1, { dot: true });
+    this.purging = false;
+  }
+
+  private removeVisual(e: Enemy): void {
+    this.g.gfx.scene.remove(e.mesh);
+    e.mat.dispose();
+    e.visual.dispose?.();
+  }
+
+  private updateBlasts(dt: number): void {
+    const g = this.g;
+    for (let i = this.blasts.length - 1; i >= 0; i--) {
+      const b = this.blasts[i];
+      b.t -= dt;
+      if (b.t > 0) continue;
+      this.blasts.splice(i, 1);
+      const pos = new THREE.Vector3(b.x, 0, b.z);
+      g.fx.burst({ x: b.x, y: 0.8, z: b.z }, ENEMIES.bomber.color, 24, 9, 0.24, 0.5);
+      g.fx.shockwave(b.x, b.z, BOMBER_RADIUS, ENEMIES.bomber.color);
+      g.fx.shake(0.4);
+      g.gfx.flash(b.x, 2, b.z, ENEMIES.bomber.color, 90);
+      sfx.boom();
+      g.hazards.explodeAt(pos, BOMBER_RADIUS);
+      if (Math.hypot(g.player.pos.x - b.x, g.player.pos.z - b.z) < BOMBER_RADIUS + g.player.r) g.damagePlayer(b.dmg, pos);
+      // the blast hurts other enemies too, which makes bombers a tool as well as a threat
+      for (const e of [...this.list]) {
+        const d = Math.hypot(e.pos.x - b.x, e.pos.z - b.z);
+        if (d < BOMBER_RADIUS + e.r) this.damage(e, BOMBER_ENEMY_DMG, { dir: new THREE.Vector3(e.pos.x - b.x, 0, e.pos.z - b.z).normalize(), knock: 10 });
+      }
+    }
   }
 
   private updateStatus(e: Enemy, dt: number): void {
@@ -292,7 +354,7 @@ export class Enemies {
           const spread = m.count > 1 ? 1.2 : 0;
           this.spawn(m.kind, r.x + rand(-spread, spread), r.z + rand(-spread, spread), m.elite);
         }
-        const big = m.kind === 'boss';
+        const big = !!def.boss;
         g.fx.burst({ x: r.x, y: 1, z: r.z }, def.color, big ? 50 : 14, big ? 12 : 6, big ? 0.3 : 0.16, 0.5);
         g.fx.shockwave(r.x, r.z, big ? 5 : 1.6, def.color);
         g.fx.shake(big ? 0.8 : 0.06);
@@ -306,11 +368,19 @@ export class Enemies {
   }
 
   private kill(e: Enemy): void {
-    const g = this.g, def = e.def, big = e.kind === 'boss';
+    const g = this.g, def = e.def, big = !!def.boss;
     g.fx.derez(e.visual.shell, def.color);
-    g.gfx.scene.remove(e.mesh);
-    e.mat.dispose();
+    this.removeVisual(e);
     this.list.splice(this.list.indexOf(e), 1);
+
+    if (e.kind === 'bomber' && !this.purging) this.blasts.push({ x: e.pos.x, z: e.pos.z, t: 0.06, dmg: def.dmg * (e.elite ? ELITE.dmg : 1) });
+    if (e.kind === 'splitter' && !this.purging) {
+      // splits into a small swarm
+      for (let i = 0, n = e.elite ? 5 : 3; i < n; i++) {
+        const a = (i / n) * Math.PI * 2;
+        this.spawn('swarmer', e.pos.x + Math.sin(a) * 0.8, e.pos.z + Math.cos(a) * 0.8);
+      }
+    }
 
     const bits = big ? 80 : e.kind === 'brute' ? 30 : e.kind === 'swarmer' ? 7 : 16;
     g.fx.burst({ x: e.pos.x, y: def.y, z: e.pos.z }, def.color, bits, big ? 16 : 9, big ? 0.4 : 0.22, big ? 1.2 : 0.6);

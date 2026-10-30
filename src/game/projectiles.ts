@@ -3,6 +3,7 @@ import { GEO, glowMat } from '../core/assets';
 import { sfx } from '../core/audio';
 import type { Element, WeaponDef } from '../data/weapons';
 import type { Enemy } from './enemies';
+import { untargetable } from './enemyAI';
 import type { Game } from './game';
 
 interface Bullet {
@@ -68,12 +69,14 @@ export class Projectiles {
     });
   }
 
-  fireEnemy(pos: THREE.Vector3, angle: number, speed: number, color: number, y = 0.8): void {
+  fireEnemy(pos: THREE.Vector3, angle: number, speed: number, color: number, y = 0.8, dmg = ENEMY_BULLET_DMG, life = 4): void {
     const m = new THREE.Mesh(GEO.sphere, glowMat(color, 3));
     m.scale.setScalar(ENEMY_BULLET_RADIUS);
+    if (speed > 20) m.scale.z = ENEMY_BULLET_RADIUS * 4;  // fast sniper rounds read as streaks
+    m.rotation.y = angle;
     m.position.set(pos.x + Math.sin(angle) * 0.8, y, pos.z + Math.cos(angle) * 0.8);
     this.g.gfx.scene.add(m);
-    this.enemyBullets.push({ mesh: m, vel: new THREE.Vector3(Math.sin(angle) * speed, 0, Math.cos(angle) * speed), life: 4, r: ENEMY_BULLET_RADIUS, dmg: ENEMY_BULLET_DMG });
+    this.enemyBullets.push({ mesh: m, vel: new THREE.Vector3(Math.sin(angle) * speed, 0, Math.cos(angle) * speed), life, r: ENEMY_BULLET_RADIUS, dmg });
   }
 
   explode(pos: THREE.Vector3, radius: number, dmg: number, color = 0xff4dd2): void {
@@ -107,6 +110,20 @@ export class Projectiles {
     for (const b of this.bullets) this.g.gfx.scene.remove(b.mesh);
     this.bullets.length = 0;
     this.clearEnemyBullets();
+  }
+
+  // Shield enemies deflect shots that hit their front (they face the player).
+  // Railgun-grade piercing goes straight through; explosions and elements go around it.
+  private blockedByShield(b: Bullet, e: Enemy): boolean {
+    if (e.kind !== 'shield' || b.pierce >= 5) return false;
+    const p = this.g.player.pos;
+    const fx = p.x - e.pos.x, fz = p.z - e.pos.z, fl = Math.hypot(fx, fz) || 1;
+    const vl = b.vel.length() || 1;
+    // bullet travelling against the shield's facing = hitting the front
+    if ((b.vel.x * fx + b.vel.z * fz) / (vl * fl) > -0.35) return false;
+    this.g.fx.burst(b.mesh.position, e.def.color, 4, 6, 0.12, 0.25);
+    sfx.deflect();
+    return true;
   }
 
   private hitEnemy(b: Bullet, e: Enemy): void {
@@ -176,11 +193,12 @@ export class Projectiles {
 
       if (!dead) {
         for (const e of [...g.enemies.list]) {
-          if (b.hits.has(e) || e.hp <= 0) continue;
+          if (b.hits.has(e) || e.hp <= 0 || untargetable(e)) continue;
           // flame puffs grow, so their hit radius follows the mesh
           if (Math.hypot(e.pos.x - pos.x, e.pos.z - pos.z) >= e.r + Math.max(0.25, b.mesh.scale.x)) continue;
           b.hits.add(e);
           if (b.blast) { dead = true; break; }
+          if (this.blockedByShield(b, e)) { dead = true; break; }
           this.hitEnemy(b, e);
           if (b.pierce-- <= 0) { dead = true; break; }
         }
@@ -202,7 +220,7 @@ export class Projectiles {
       const b = this.enemyBullets[i], pos = b.mesh.position;
       pos.addScaledVector(b.vel, dt);
       b.life -= dt;
-      let dead = b.life <= 0 || g.room.shotBlocked(pos.x, pos.z);
+      let dead = b.life <= 0 || g.hazards.hitByEnemyShot(pos, b.dmg) || g.room.shotBlocked(pos.x, pos.z);
       if (!dead && player.invuln <= 0 && Math.hypot(player.pos.x - pos.x, player.pos.z - pos.z) < b.r + player.r * 0.8) {
         g.damagePlayer(b.dmg, pos);
         dead = true;

@@ -50,6 +50,12 @@ export const BALANCE = {
     barrelRadius: 3.2,
     barrelDmg: 60,
     barrelPlayerDmg: 20,
+    gridOff: 2.6,          // electric grid cycle, seconds
+    gridWarn: 0.8,
+    gridOn: 1.5,
+    gridPlayerDmg: 15,
+    gridEnemyDmg: 12,
+    coverHp: 70,
     riftHp: 150,
     riftSpawnEvery: 4.5,
     riftReward: 8,

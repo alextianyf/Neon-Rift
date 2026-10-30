@@ -16,10 +16,12 @@ export const RARITY_LABEL: Record<Rarity, string> = { common: '普通', rare: '�
 export const RARITY_PRICE: Record<Rarity, number> = { common: 20, rare: 35, legendary: 60 };
 
 // Roll weights by context.
-export const ROLL_WEIGHTS: Record<'room' | 'boss' | 'shop', Record<Rarity, number>> = {
+export const ROLL_WEIGHTS: Record<'room' | 'boss' | 'shop' | 'challenge' | 'treasure', Record<Rarity, number>> = {
   room: { common: 65, rare: 30, legendary: 5 },
   boss: { common: 0, rare: 60, legendary: 40 },
   shop: { common: 30, rare: 55, legendary: 15 },
+  challenge: { common: 0, rare: 40, legendary: 60 },
+  treasure: { common: 20, rare: 60, legendary: 20 },
 };
 
 export const UPGRADES: UpgradeDef[] = [

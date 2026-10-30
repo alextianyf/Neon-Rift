@@ -2,7 +2,8 @@ import * as THREE from 'three';
 import { disposeTree } from '../core/assets';
 import { clamp, rand } from '../core/math';
 import { BALANCE } from '../data/balance';
-import { ENEMIES, type EnemyKind } from '../data/enemies';
+import { ENEMIES, SPAWN_TABLE, bossFor, type EnemyKind } from '../data/enemies';
+import { CHALLENGE_TIME, ROOM_INFO, type RoomKind } from '../data/map';
 
 export interface AABB {
   x0: number;
@@ -19,9 +20,15 @@ export interface SpawnEntry {
   elite: boolean;
 }
 
-export type RoomKind = 'combat' | 'boss' | 'shop';
+export type { RoomKind };
 export type RoomSize = 'small' | 'medium' | 'large';
 export type Layout = 'arena' | 'pit' | 'lshape' | 'lanes';
+
+export interface Portal {
+  group: THREE.Group;
+  pos: THREE.Vector3;
+  kind: RoomKind;  // the sector type this portal leads to
+}
 
 const SIZES: Record<RoomSize, [number, number]> = { small: [14, 9], medium: [18, 12], large: [22, 15] };
 const PORTAL_RADIUS = 1.4;
@@ -55,16 +62,12 @@ export class Room {
   readonly theme = new THREE.Color();
   readonly hub = new THREE.Vector3();      // free spot for the exit portal
   readonly lootSpot = new THREE.Vector3(); // free spot for the weapon drop
-  readonly portalPos = new THREE.Vector3();
+  kind: RoomKind = 'combat';
+  challengeT = 0;       // challenge sectors: seconds of survival left
+  readonly portals: Portal[] = [];
   private group: THREE.Group | null = null;
-  private portal: THREE.Group | null = null;
 
   constructor(private readonly scene: THREE.Scene) {}
-
-  get kind(): RoomKind {
-    const k = this.n % BALANCE.rooms.bossEvery;
-    return k === 0 ? 'boss' : k === BALANCE.rooms.shopOffset ? 'shop' : 'combat';
-  }
 
   get isBoss(): boolean {
     return this.kind === 'boss';
@@ -75,16 +78,20 @@ export class Room {
   }
 
   get label(): string {
-    if (this.kind === 'combat' && this.waves.length > 1) return `净化中 · 波次 ${Math.min(this.wave + 1, this.waves.length)}/${this.waves.length}`;
-    return { combat: '净化中', boss: '裂隙核心', shop: '黑市终端' }[this.kind];
+    const name = ROOM_INFO[this.kind].name;
+    if (this.kind === 'challenge' && !this.cleared) return `${name} · 剩余 ${Math.ceil(Math.max(0, this.challengeT))}s`;
+    if (this.waves.length > 1 && !this.cleared) return `${name} · 波次 ${Math.min(this.wave + 1, this.waves.length)}/${this.waves.length}`;
+    return name;
   }
 
-  build(n: number): void {
+  build(n: number, kind: RoomKind): void {
     this.dispose();
     this.n = n;
-    const boss = this.isBoss, shop = this.kind === 'shop';
+    this.kind = kind;
+    const boss = this.isBoss, shop = kind === 'shop' || kind === 'treasure';
     if (boss) { this.size = 'large'; this.layout = 'arena'; }
     else if (shop) { this.size = 'small'; this.layout = 'arena'; }
+    else if (kind === 'challenge') { this.size = 'large'; this.layout = 'arena'; }
     else if (n === 1) { this.size = 'medium'; this.layout = 'arena'; }
     else {
       this.size = pick<RoomSize>([['small', 3], ['medium', 4], ['large', 3]]);
@@ -94,9 +101,10 @@ export class Room {
     }
     [this.hw, this.hh] = boss ? [21, 15] : shop ? [15, 10] : SIZES[this.size];
     this.obstacles = [];
-    this.hub.set(0, 0, 0);
+    // shops and vaults put their wares in the middle, so the exits go to the far wall
+    this.hub.set(0, 0, shop ? -this.hh + 3.5 : 0);
     this.lootSpot.set(0, 0, 3);
-    this.theme.setHSL(shop ? 0.13 : (0.52 + n * 0.13) % 1, 0.9, 0.55);
+    this.theme.setHSL(kind === 'shop' ? 0.13 : kind === 'treasure' ? 0.38 : (0.52 + n * 0.13) % 1, 0.9, 0.55);
     const { hw, hh, theme } = this;
     const g = new THREE.Group();
 
@@ -178,37 +186,46 @@ export class Room {
 
   // Build the wave plan for the current room and start the first wave.
   plan(): void {
-    const n = this.n, R = BALANCE.rooms, E = BALANCE.elites;
+    const n = this.n, R = BALANCE.rooms;
     this.waves = [];
+    this.challengeT = this.kind === 'challenge' ? CHALLENGE_TIME : 0;
     if (this.kind === 'boss') {
-      this.waves = [[{ kind: 'boss', delay: 1.2, count: 1, elite: false }, { kind: 'grunt', delay: 2, count: 3, elite: false }]];
-    } else if (this.kind === 'combat') {
+      this.waves = [[{ kind: bossFor(n), delay: 1.2, count: 1, elite: false }, { kind: 'grunt', delay: 2, count: 3, elite: false }]];
+    } else if (this.kind === 'combat' || this.kind === 'elite') {
+      const elite = this.kind === 'elite';
       const area = clamp((this.hw * this.hh) / (18 * 12), 0.6, 1.6);
-      const total = (R.budgetBase + n * R.budgetPerRoom) * area;
-      const waveCount = this.size === 'small' ? 2 : this.size === 'large' ? 3 : n >= 6 ? 3 : 2;
-      const eliteChance = n >= E.fromRoom ? Math.min(E.maxChance, E.chance + (n - E.fromRoom) * E.chancePerRoom) : 0;
+      const total = (R.budgetBase + n * R.budgetPerRoom) * area * (elite ? 0.8 : 1);
+      const waveCount = elite ? 2 : this.size === 'small' ? 2 : this.size === 'large' ? 3 : n >= 6 ? 3 : 2;
       for (let w = 0; w < waveCount; w++) {
         // later waves are a bit heavier
         let budget = total / waveCount * (0.8 + 0.4 * w / Math.max(1, waveCount - 1));
         const wave: SpawnEntry[] = [];
         let t = 0.6;
         while (budget > 0) {
-          const r = Math.random();
-          let kind: EnemyKind = 'grunt', count = 1;
-          if (n >= R.swarmFromRoom && r < 0.25) { kind = 'swarmer'; count = 5 + Math.floor(Math.random() * 5); }
-          else if (n >= R.shooterFromRoom && r < 0.5) kind = 'shooter';
-          else if (n >= R.bruteFromRoom && r > 0.88) kind = 'brute';
-          const elite = kind !== 'swarmer' && Math.random() < eliteChance;
-          budget -= ENEMIES[kind].cost * count * (elite ? 2.5 : 1);
-          wave.push({ kind, delay: t, count, elite });
+          const e = this.rollSpawn(elite);
+          budget -= ENEMIES[e.kind].cost * e.count * (e.elite ? 2.5 : 1);
+          wave.push({ ...e, delay: t });
           t += rand(0.25, 0.7);
         }
         this.waves.push(wave);
       }
     }
-    this.cleared = this.kind === 'shop';
+    // challenge sectors spawn continuously from Game instead of from waves
+    this.cleared = this.kind === 'shop' || this.kind === 'treasure';
     this.clearT = -1;
     this.startWave(0);
+  }
+
+  // One random spawn for this sector depth. Elite sectors skip swarm packs and make everything elite.
+  rollSpawn(eliteRoom = false): Omit<SpawnEntry, 'delay'> {
+    const n = this.n, E = BALANCE.elites;
+    const pool = SPAWN_TABLE.filter(s => n >= s.from && !(eliteRoom && s.pack));
+    let r = Math.random() * pool.reduce((sum, s) => sum + s.weight, 0);
+    const s = pool.find(p => (r -= p.weight) <= 0) ?? pool[0];
+    const count = s.pack ? s.pack[0] + Math.floor(Math.random() * (s.pack[1] - s.pack[0] + 1)) : 1;
+    const eliteChance = n >= E.fromRoom ? Math.min(E.maxChance, E.chance + (n - E.fromRoom) * E.chancePerRoom) : 0;
+    const elite = !s.pack && (eliteRoom || Math.random() < eliteChance);
+    return { kind: s.kind, count, elite };
   }
 
   startWave(i: number): void {
@@ -280,11 +297,32 @@ export class Room {
     return [from.x > 0 ? -this.hw + 2 : this.hw - 2, -this.hh + 2];
   }
 
-  openPortal(x = this.hub.x, z = this.hub.z): void {
+  // Open one exit portal per offered path, spread around the hub.
+  openPortals(kinds: RoomKind[]): void {
+    kinds.forEach((kind, i) => {
+      const offset = kinds.length === 1 ? 0 : (i === 0 ? -3.4 : 3.4);
+      this.addPortal(this.hub.x + offset, this.hub.z, kind);
+    });
+  }
+
+  // The path whose portal the point stands in, if any.
+  portalReached(p: THREE.Vector3): RoomKind | null {
+    const hit = this.portals.find(o => Math.hypot(p.x - o.pos.x, p.z - o.pos.z) < PORTAL_RADIUS);
+    return hit ? hit.kind : null;
+  }
+
+  updatePortal(dt: number, time: number): void {
+    for (const p of this.portals) {
+      const [ring, disc] = p.group.children as THREE.Mesh<THREE.BufferGeometry, THREE.MeshBasicMaterial>[];
+      ring.rotation.z += dt * 2;
+      disc.material.opacity = 0.25 + Math.sin(time * 5) * 0.12;
+    }
+  }
+
+  private addPortal(x: number, z: number, kind: RoomKind): void {
     const g = new THREE.Group();
     g.position.set(x, 0, z);
-    this.portalPos.set(x, 0, z);
-    const col = new THREE.Color(0x4ff0ff).multiplyScalar(2.5);
+    const col = new THREE.Color(ROOM_INFO[kind].color).multiplyScalar(2.5);
     const ring = new THREE.Mesh(new THREE.TorusGeometry(1.3, 0.12, 8, 40), new THREE.MeshBasicMaterial({ color: col }));
     ring.rotation.x = -Math.PI / 2;
     ring.position.y = 0.15;
@@ -298,18 +336,7 @@ export class Room {
     beam.position.y = 3;
     g.add(ring, disc, beam);
     this.scene.add(g);
-    this.portal = g;
-  }
-
-  updatePortal(dt: number, time: number): void {
-    if (!this.portal) return;
-    const [ring, disc] = this.portal.children as THREE.Mesh<THREE.BufferGeometry, THREE.MeshBasicMaterial>[];
-    ring.rotation.z += dt * 2;
-    disc.material.opacity = 0.25 + Math.sin(time * 5) * 0.12;
-  }
-
-  portalReached(p: THREE.Vector3): boolean {
-    return this.portal !== null && Math.hypot(p.x - this.portalPos.x, p.z - this.portalPos.z) < PORTAL_RADIUS;
+    this.portals.push({ group: g, pos: new THREE.Vector3(x, 0, z), kind });
   }
 
   // A rectangular hole into the void: blocks walking, not shooting.
@@ -329,12 +356,12 @@ export class Room {
   }
 
   private dispose(): void {
-    for (const obj of [this.group, this.portal]) {
+    for (const obj of [this.group, ...this.portals.map(p => p.group)]) {
       if (!obj) continue;
       this.scene.remove(obj);
       disposeTree(obj);
     }
     this.group = null;
-    this.portal = null;
+    this.portals.length = 0;
   }
 }

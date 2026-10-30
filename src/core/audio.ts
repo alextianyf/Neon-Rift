@@ -83,6 +83,7 @@ export const sfx = {
   weaponSwitch: (i: number) => tone(700 + i * 120, 0.06, 'triangle', 0.08),
   hit: throttled(40, () => tone(320, 0.04, 'triangle', 0.08, 0.6)),
   crit: throttled(60, () => tone(1600, 0.06, 'square', 0.05, 0.5)),
+  deflect: throttled(70, () => tone(2200, 0.05, 'square', 0.04, 0.6)),
   zap: throttled(60, () => noise(0.12, 0.2, 6000, 'highpass')),
   kill: () => noise(0.22, 0.25, 1600),
   boom: () => { noise(0.6, 0.6, 900); tone(90, 0.4, 'sine', 0.3, 0.4); },
