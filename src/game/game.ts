@@ -1,53 +1,66 @@
 import * as THREE from 'three';
 import { initAudio, setVolume, sfx } from '../core/audio';
 import { Graphics } from '../core/graphics';
-import { Input, type PadButton, type TouchAction } from '../core/input';
+import { t } from '../core/i18n';
+import { Input } from '../core/input';
 import { duck, setMood, setMusicVolume } from '../core/music';
-import { rnd, rngState, seedFromString, seedRun, todayKey } from '../core/rng';
+import { seedFromString, seedRun, todayKey } from '../core/rng';
 import { BALANCE } from '../data/balance';
-import { DEPTH_CRYSTAL_BONUS, DEPTH_DESC, FINAL_SECTOR, MAX_DEPTH, MODS, VICTORY_CRYSTALS, setDepth } from '../data/depth';
-import { ENEMIES } from '../data/enemies';
-import { ROOM_INFO, rollPaths, type RoomKind } from '../data/map';
-import { MECHS, TALENTS, crystalsFor, type MechId, type TalentId } from '../data/meta';
-import { ROLL_WEIGHTS, UPGRADES, rollUpgrades, type UpgradeDef } from '../data/upgrades';
+import { DEPTH_CRYSTAL_BONUS, DEPTH_DESC, MODS, VICTORY_CRYSTALS, setDepth } from '../data/depth';
+import type { RoomKind } from '../data/map';
+import { MECHS, crystalsFor } from '../data/meta';
+import { UPGRADES, type UpgradeDef } from '../data/upgrades';
 import { MAX_WEAPON_SLOTS } from '../data/weapons';
-import { Floaters, type Tag } from '../ui/floaters';
+import { Floaters } from '../ui/floaters';
 import { Hud } from '../ui/hud';
-import { Screens, type BuildEntry, type StatLine } from '../ui/screens';
+import type { CodexKind } from '../ui/profile';
+import { buildEntries, statLines } from '../ui/runStats';
+import { clearRun, saveRun, type RunSave } from '../ui/runsave';
+import { Screens } from '../ui/screens';
 import { loadSettings, saveSettings, type Settings } from '../ui/settings';
-import { loadBest, saveBest } from '../ui/storage';
-import { HISTORY_LIMIT } from '../data/codex';
-import { loadProfile, saveProfile, talentLevel, type CodexKind, type Profile } from '../ui/profile';
-import { clearRun, loadRun, saveRun, type RunSave } from '../ui/runsave';
+import { loadBest } from '../ui/storage';
 import { Atmosphere } from './atmosphere';
+import { bindControls, placePadCrosshair } from './controls';
 import { Effects } from './effects';
 import { Enemies, type Enemy } from './enemies';
 import { Hazards } from './hazards';
 import { Interactables } from './interactables';
+import { Menus } from './menus';
 import { Perks } from './perks';
 import { Pickups } from './pickups';
 import { Player } from './player';
+import { Progress } from './progress';
 import { Projectiles } from './projectiles';
 import { Room } from './room';
+import { SectorFlow } from './sector';
 import { Tutorial } from './tutorial';
-import { t } from '../core/i18n';
 
 export type GameState = 'title' | 'play' | 'paused' | 'upgrade' | 'transition' | 'dead' | 'won';
 
 const tmp = new THREE.Vector3();
-const pct = (v: number) => `${Math.round(v * 100)}%`;
 
 // Owns every system and runs the state machine:
-// title -> play -> (room cleared) upgrade -> play -> (portal) transition -> play ... -> dead
+// title -> play -> (room cleared) upgrade -> play -> (portal) transition -> play ... -> dead / won
+// Sector flow lives in sector.ts, input routing in controls.ts, title menus in menus.ts,
+// and everything saved to the profile in progress.ts.
 export class Game {
   state: GameState = 'title';
   time = 0;
+
+  // this run
   score = 0;
   kills = 0;
   coinsEarned = 0;
   combo = 0;
   bestCombo = 0;
+  bossKills = 0;
+  runTime = 0;                   // seconds played this run
+  daily = false;
+  depth = 0;                     // rift depth of the current run
+  endless = false;               // kept going after clearing the final sector
   private comboT = 0;
+  private crystalsAwarded = 0;   // crystals already paid out this run (at victory)
+  private runId = 0;
 
   readonly gfx = new Graphics();
   readonly hud = new Hud();
@@ -64,42 +77,20 @@ export class Game {
   readonly interactables = new Interactables(this);
   readonly hazards = new Hazards(this);
   readonly perks = new Perks(this);
+  readonly progress = new Progress();
+  readonly sector = new SectorFlow(this);
+  readonly menus = new Menus(this);
+  private readonly tutorial = new Tutorial(this, this.progress.profile.seen, () => this.progress.save());
 
   private readonly clock = new THREE.Clock();
-  private upgradeChoices: UpgradeDef[] = [];
   private settings: Settings = loadSettings();
-  private portalTags: Tag[] = [];
-  private profile: Profile = loadProfile();
-  private daily = false;
-  bossKills = 0;
-  private challengeSpawnT = 0;
-  private depth = 0;             // rift depth of the current run
-  private endless = false;       // kept going after clearing the final sector
-  private crystalsAwarded = 0;   // crystals already paid out this run (at victory)
-  runTime = 0;                   // seconds played this run
-  private runId = 0;
-  private codexTab: CodexKind | 'history' = 'enemies';
-  private readonly tutorial = new Tutorial(this, this.profile.seen, () => saveProfile(this.profile));
 
   constructor() {
-    this.bindInput();
-    this.screens.onClick('startBtn', () => this.start(false));
-    this.screens.onClick('dailyBtn', () => this.start(true));
-    this.screens.onClick('continueBtn', () => { const s = loadRun(); if (s) this.start(s.daily, s); });
+    bindControls(this);
     this.screens.onClick('restartBtn', () => this.start(this.daily));
-    this.screens.onClick('hangarBtn', () => this.openHangar());
-    this.screens.onClick('hangarBack', () => this.closeHangar());
-    this.screens.onClick('codexBtn', () => this.openCodex());
-    this.screens.onClick('codexBack', () => this.closeCodex());
-    for (const el of document.querySelectorAll<HTMLElement>('#codexTabs [data-tab]')) {
-      el.addEventListener('click', () => { this.codexTab = el.dataset.tab as CodexKind | 'history'; this.renderCodex(); });
-    }
     this.screens.onClick('menuBtn', () => this.toTitle());
     this.screens.onClick('winContinue', () => this.continueEndless());
     this.screens.onClick('winMenu', () => this.toTitle());
-    this.screens.onClick('depthDown', () => this.changeDepth(-1));
-    this.screens.onClick('depthUp', () => this.changeDepth(1));
-    this.refreshTitle();
     this.screens.onClick('resumeBtn', () => this.setPaused(false));
     this.screens.onClick('quitBtn', () => { duck(false); this.toTitle(); });
     this.screens.bindSettings(this.settings, s => {
@@ -117,13 +108,7 @@ export class Game {
     };
     addEventListener('pointerdown', wake);
     addEventListener('keydown', wake);
-
-    // backdrop for the title screen
-    this.room.build(1, 'combat');
-    this.atmosphere.build(this.room);
-    this.player.setMech(MECHS[this.profile.selected]);
-    this.player.pos.set(0, 0, 3);
-    this.player.mesh.position.copy(this.player.pos);
+    this.buildBackdrop();
   }
 
   run(): void {
@@ -132,7 +117,7 @@ export class Game {
       const dt = this.fx.consumeHitstop(Math.min(this.clock.getDelta(), 1 / 30));
       this.input.pollGamepad();
       document.body.classList.toggle('playing', this.state === 'play');
-      if (this.input.usingPad && this.state === 'play') this.placePadCrosshair();
+      if (this.input.usingPad && this.state === 'play') placePadCrosshair(this);
       if (this.state === 'play') this.update(dt);
       else if (this.state === 'title') {
         this.time += dt;
@@ -154,13 +139,14 @@ export class Game {
   // New run, or resume `save` from the start of the sector it was taken in.
   start(daily: boolean, save?: RunSave): void {
     initAudio();
+    const profile = this.progress.profile;
     this.daily = daily;
-    this.depth = save ? save.depth : daily ? 0 : this.profile.depth;
+    this.depth = save ? save.depth : daily ? 0 : profile.depth;
     this.endless = save?.endless ?? false;
     this.crystalsAwarded = save?.crystalsAwarded ?? 0;
     setDepth(this.depth);
-    const mech = MECHS[save?.mech ?? this.profile.selected] ?? MECHS.vanguard;
-    this.player.reset(mech, this.profile.talents);
+    const mech = MECHS[save?.mech ?? profile.selected] ?? MECHS.vanguard;
+    this.player.reset(mech, profile.talents);
     this.hud.setSkill(mech.skillName);
     this.score = this.kills = this.coinsEarned = this.combo = this.bestCombo = this.bossKills = 0;
     this.comboT = this.runTime = 0;
@@ -191,13 +177,36 @@ export class Game {
     this.screens.setCrosshair(true);
     if (save) {
       seedRun(save.seed);
-      this.enterRoom(save.room, save.kind);
+      this.sector.enter(save.room, save.kind);
       this.hud.toast(t('继续 · 扇区 {n}', { n: String(save.room).padStart(2, '0') }));
     } else {
       seedRun(daily ? seedFromString(`neon-rift:${todayKey()}`) : undefined);
-      this.enterRoom(1, 'combat');
+      this.sector.enter(1, 'combat');
     }
     this.state = 'play';
+  }
+
+  // Snapshot taken on entering each sector; `seed` is the RNG state from before the sector was built.
+  saveRunState(seed: number, room: number, kind: RoomKind): void {
+    const p = this.player;
+    saveRun({
+      v: 1, daily: this.daily, dailyDate: todayKey(), depth: this.depth, endless: this.endless, seed, room, kind,
+      score: this.score, kills: this.kills, coinsEarned: this.coinsEarned, bestCombo: this.bestCombo,
+      bossKills: this.bossKills, crystalsAwarded: this.crystalsAwarded, playTime: this.runTime,
+      mech: p.mechDef.id, hp: p.hp, coins: p.coins, revives: p.revives,
+      slots: p.slots, weapon: p.weapon, upgrades: [...p.taken],
+    });
+  }
+
+  // Remove every enemy, shot, pickup, hazard and portal label from the current sector.
+  clearWorld(): void {
+    this.sector.clear();
+    this.enemies.clear();
+    this.projectiles.clear();
+    this.pickups.clear();
+    this.interactables.clear();
+    this.hazards.clear();
+    this.perks.clear();
   }
 
   setPaused(paused: boolean): void {
@@ -205,7 +214,7 @@ export class Game {
     this.input.mouseDown = false;
     this.input.releaseTouch();
     duck(paused);
-    if (paused) this.screens.showPause(this.statLines(), this.buildEntries());
+    if (paused) this.screens.showPause(statLines(this.player), buildEntries(this.player));
     else this.screens.toggle('pauseScreen', false);
     this.screens.setCrosshair(!paused);
   }
@@ -215,20 +224,6 @@ export class Game {
     if (this.state !== 'play') return;
     this.player.hp -= amount * MODS.enemyDmg;
     if (this.player.hp <= 0) this.onLethal();
-  }
-
-  // Out of HP: use the revive protocol if available, otherwise the run ends.
-  private onLethal(): void {
-    const p = this.player;
-    if (p.revives <= 0) { this.gameOver(); return; }
-    p.revives--;
-    p.hp = p.maxHp * 0.5;
-    p.invuln = 2;
-    this.projectiles.clearEnemyBulletsNear(p.pos, 8);
-    this.fx.burst({ x: p.pos.x, y: 1, z: p.pos.z }, 0x55ff99, 40, 10, 0.25, 0.8);
-    this.fx.shockwave(p.pos.x, p.pos.z, 6, 0x55ff99);
-    sfx.levelUp();
-    this.hud.toast(t('复苏协议启动'));
   }
 
   damagePlayer(dmg: number, from: THREE.Vector3 | null): void {
@@ -274,34 +269,8 @@ export class Game {
     this.hud.hitMarker(true);
   }
 
-  // Codex: remember an enemy / weapon / module the first time it shows up.
   discover(kind: CodexKind, id: string): void {
-    const list = this.profile.codex[kind];
-    if (list.includes(id)) return;
-    list.push(id);
-    saveProfile(this.profile);
-  }
-
-  // Add (or update, after an endless continuation) this run's line in the history.
-  private recordRun(won: boolean): void {
-    const pr = this.profile;
-    const rec = {
-      id: this.runId, date: todayKey(), mech: this.player.mechDef.id, depth: this.depth, daily: this.daily,
-      won, room: this.room.n, score: this.score, kills: this.kills, time: Math.round(this.runTime),
-    };
-    const i = pr.history.findIndex(h => h.id === rec.id);
-    if (i >= 0) {
-      const prev = pr.history[i];
-      pr.totals.kills += rec.kills - prev.kills;
-      pr.totals.time += rec.time - prev.time;
-      pr.history[i] = { ...rec, won: prev.won || won };
-    } else {
-      pr.totals.runs++;
-      pr.totals.kills += rec.kills;
-      pr.totals.time += rec.time;
-      pr.history.unshift(rec);
-      pr.history.length = Math.min(pr.history.length, HISTORY_LIMIT);
-    }
+    this.progress.discover(kind, id);
   }
 
   applyUpgrade(u: UpgradeDef): void {
@@ -316,113 +285,34 @@ export class Game {
     this.hud.renderWeapons(this.player.slots, this.player.weapon, MAX_WEAPON_SLOTS);
   }
 
-  private applySettings(s: Settings): void {
-    this.settings = s;
-    saveSettings(s);
-    setVolume(s.volume);
-    setMusicVolume(s.music * s.volume);
-    this.fx.shakeScale = s.shake ? 1 : 0;
-    this.floaters.enabled = s.damageNumbers;
-    this.tutorial.enabled = s.hints;
-    if (!s.hints) this.tutorial.hide();
-  }
-
-  private bindInput(): void {
-    this.input.handlers = {
-      onKeyDown: (k, repeat) => {
-        if (this.state === 'play') {
-          if (/^[1-9]$/.test(k)) this.switchWeapon(+k - 1);
-          if (k === 'q') this.switchWeapon((this.player.weapon + 1) % this.player.slots.length);
-          if (k === ' ' && !repeat) this.player.tryDash(this.input.moveDir(tmp), this);
-          if (k === 'e' && !repeat) this.interactables.interact();
-          if (k === 'f' && !repeat) this.player.trySkill(this);
-          if (k === 'escape' || k === 'p') this.setPaused(true);
-        } else if (this.state === 'paused' && (k === 'escape' || k === 'p')) {
-          this.setPaused(false);
-        } else if (this.state === 'upgrade' && /^[1-9]$/.test(k)) {
-          this.pickUpgrade(+k - 1);
-        }
-      },
-      onRightClick: () => { if (this.state === 'play') this.player.tryDash(this.input.moveDir(tmp), this); },
-      onWheel: dir => {
-        const n = this.player.slots.length;
-        if (this.state === 'play') this.switchWeapon((this.player.weapon + dir + n) % n);
-      },
-      onBlur: () => { if (this.state === 'play') this.setPaused(true); },
-      onPad: b => this.onPad(b),
-      onTouch: a => this.onTouch(a),
-    };
-  }
-
-  // Gamepad buttons, by game state.
-  private onPad(b: PadButton): void {
-    const n = this.player.slots.length;
-    const click = (id: string) => (document.getElementById(id) as HTMLButtonElement | null)?.click();
-    const visible = (id: string) => !document.getElementById(id)?.classList.contains('hidden');
-    switch (this.state) {
-      case 'play':
-        if (b === 'a' || b === 'lt') this.player.tryDash(this.input.moveDir(tmp), this);
-        else if (b === 'x') this.interactables.interact();
-        else if (b === 'y') this.player.trySkill(this);
-        else if (b === 'rb') this.switchWeapon((this.player.weapon + 1) % n);
-        else if (b === 'lb') this.switchWeapon((this.player.weapon - 1 + n) % n);
-        else if (b === 'start') this.setPaused(true);
-        break;
-      case 'paused':
-        if (b === 'start' || b === 'b') this.setPaused(false);
-        else if (b === 'back') click('quitBtn');
-        break;
-      case 'upgrade':
-        if (b === 'x') this.pickUpgrade(0);
-        else if (b === 'y') this.pickUpgrade(1);
-        else if (b === 'b') this.pickUpgrade(2);
-        break;
-      case 'dead':
-        if (b === 'a') click('restartBtn');
-        else if (b === 'b') click('menuBtn');
-        break;
-      case 'won':
-        if (b === 'a') click('winContinue');
-        else if (b === 'b') click('winMenu');
-        break;
-      case 'title':
-        if (visible('hangarScreen')) { if (b === 'b') click('hangarBack'); }
-        else if (visible('codexScreen')) {
-          const tabs: (CodexKind | 'history')[] = ['enemies', 'weapons', 'upgrades', 'history'];
-          if (b === 'b') click('codexBack');
-          else if (b === 'lb' || b === 'rb') {
-            this.codexTab = tabs[(tabs.indexOf(this.codexTab) + (b === 'rb' ? 1 : 3)) % 4];
-            this.renderCodex();
-          }
-        }
-        else if (b === 'a') click(visible('continueBtn') ? 'continueBtn' : 'startBtn');
-        else if (b === 'start') click('startBtn');
-        else if (b === 'back') click('codexBtn');
-        else if (b === 'y') click('dailyBtn');
-        else if (b === 'x') click('hangarBtn');
-        else if (b === 'lb') this.changeDepth(-1);
-        else if (b === 'rb') this.changeDepth(1);
-        break;
-    }
-  }
-
-  private onTouch(a: TouchAction): void {
-    if (this.state !== 'play') return;
-    if (a === 'dash') this.player.tryDash(this.input.moveDir(tmp), this);
-    else if (a === 'skill') this.player.trySkill(this);
-    else if (a === 'use') this.interactables.interact();
-    else if (a === 'swap') this.switchWeapon((this.player.weapon + 1) % this.player.slots.length);
-    else if (a === 'pause') this.setPaused(true);
-  }
-
-  // With a gamepad the crosshair follows the stick's aim point instead of the mouse.
-  private placePadCrosshair(): void {
-    const v = tmp.copy(this.player.aimTarget).project(this.gfx.camera);
-    this.screens.crosshair.style.transform = `translate(${(v.x + 1) / 2 * innerWidth}px, ${(1 - v.y) / 2 * innerHeight}px)`;
-  }
-
-  private switchWeapon(i: number): void {
+  switchWeapon(i: number): void {
     if (this.player.setWeapon(i)) this.refreshWeapons();
+  }
+
+  // Final sector cleared: pay out, unlock the next depth, and offer to keep going (endless).
+  victory(): void {
+    this.state = 'won';
+    clearRun();
+    this.tutorial.hide();
+    setMood('menu');
+    this.input.mouseDown = false;
+    this.hud.prompt(null);
+    const pr = this.progress;
+    const crystals = this.runCrystals() + VICTORY_CRYSTALS;
+    this.crystalsAwarded = crystals - VICTORY_CRYSTALS;
+    pr.profile.crystals += crystals;
+    pr.profile.wins++;
+    this.recordRun(true);
+    const unlocked = this.daily ? null : pr.unlockAfterWin(this.depth);
+    if (this.daily) pr.recordDaily(this.score);
+    pr.save();
+    pr.recordBest(this.room.n, this.score);
+    sfx.levelUp();
+    this.fx.burst({ x: this.player.pos.x, y: 1, z: this.player.pos.z }, 0xffc83d, 60, 12, 0.3, 1.2);
+    this.screens.showVictory({
+      score: this.score, kills: this.kills, bestCombo: this.bestCombo, crystals, depth: this.depth,
+      unlocked, unlockedDesc: unlocked !== null ? DEPTH_DESC[unlocked] : '', buffs: this.player.buffs,
+    });
   }
 
   private update(dt: number): void {
@@ -431,7 +321,7 @@ export class Game {
     this.room.time += dt;
     const coinsBefore = this.player.coins;
     this.player.update(dt, this);
-    this.spawnDue();
+    this.sector.spawnDue();
     this.enemies.update(dt);
     this.projectiles.update(dt);
     this.pickups.update(dt);
@@ -440,10 +330,7 @@ export class Game {
     this.perks.update(dt);
     this.tutorial.update(dt);
     setMood(this.enemies.boss ? 'boss' : this.room.cleared ? 'calm' : 'combat');
-    if (this.room.kind === 'challenge') this.updateChallenge(dt);
-    else this.checkClear(dt);
-    const path = this.state === 'play' ? this.room.portalReached(this.player.pos) : null;
-    if (path) this.goThroughPortal(path);
+    this.sector.update(dt);
     this.coinsEarned += Math.max(0, this.player.coins - coinsBefore);
 
     if (this.combo > 0) {
@@ -470,287 +357,18 @@ export class Game {
     });
   }
 
-  private spawnDue(): void {
-    for (const s of this.room.takeDueSpawns()) {
-      const [x, z] = ENEMIES[s.kind].boss
-        ? [0, -this.room.hh * 0.45]
-        : this.room.findSpawn(this.player.pos, BALANCE.rooms.spawnMinDist, ENEMIES[s.kind].r);
-      this.enemies.addMarker(s.kind, x, z, ENEMIES[s.kind].boss ? 1.5 : 0.75, s.count, s.elite);
-    }
-  }
-
-  private enterRoom(n: number, kind: RoomKind): void {
-    const seed = rngState();  // saved so a resumed run rebuilds this exact sector
-    for (const t of this.portalTags) this.floaters.removeTag(t);
-    this.portalTags = [];
-    this.enemies.clear();
-    this.projectiles.clear();
-    this.pickups.clear();
-    this.interactables.clear();
-    this.fx.clear();
-    this.floaters.clear();
-    this.hazards.clear();
-    this.perks.clear();
-    this.room.build(n, kind);
-    this.atmosphere.build(this.room);
-    this.hazards.build();
-    this.room.plan();
-    this.player.pos.copy(this.room.entry);
-    this.player.vel.set(0, 0, 0);
-    this.player.shield = this.player.shieldMax;
-    this.gfx.snapCamera(this.player.pos.x, this.player.pos.z);
-
-    this.challengeSpawnT = 1;
-    const name = ROOM_INFO[kind].name;
-    if (kind === 'shop') {
-      this.interactables.setupShop();
-      this.openPaths();
-      this.hud.toast(t('黑市终端 · 走近按 E 交易'));
-    } else if (kind === 'treasure') {
-      this.interactables.setupTreasure();
-      this.openPaths();
-      this.hud.toast(t('数据宝库 · 免费拾取'));
-    } else if (kind === 'boss') {
-      this.hud.toast(t('⚠ 裂隙核心'));
-    } else {
-      this.hud.toast(kind === 'combat' ? t('扇区 {n}', { n: String(n).padStart(2, '0') }) : name);
-    }
-    this.saveRunState(seed, n, kind);
-  }
-
-  private saveRunState(seed: number, room: number, kind: RoomKind): void {
+  // Out of HP: use the revive protocol if available, otherwise the run ends.
+  private onLethal(): void {
     const p = this.player;
-    saveRun({
-      v: 1, daily: this.daily, dailyDate: todayKey(), depth: this.depth, endless: this.endless, seed, room, kind,
-      score: this.score, kills: this.kills, coinsEarned: this.coinsEarned, bestCombo: this.bestCombo,
-      bossKills: this.bossKills, crystalsAwarded: this.crystalsAwarded, playTime: this.runTime,
-      mech: p.mechDef.id, hp: p.hp, coins: p.coins, revives: p.revives,
-      slots: p.slots, weapon: p.weapon, upgrades: [...p.taken],
-    });
-  }
-
-  private checkClear(dt: number): void {
-    const room = this.room;
-    const waveSpawned = room.queue.length === 0 && this.enemies.pending === 0;
-    const alive = this.enemies.list.length;
-    // next wave once the current one is mostly dead
-    if (!room.cleared && waveSpawned && room.hasMoreWaves && alive <= Math.max(2, Math.floor(room.waveSize * BALANCE.rooms.nextWaveAt))) {
-      room.startWave(room.wave + 1);
-      this.hud.toast(`WAVE ${room.wave + 1} / ${room.waves.length}`);
-    }
-    if (!room.cleared && waveSpawned && !room.hasMoreWaves && alive === 0 && this.hazards.openRifts === 0) {
-      room.cleared = true;
-      room.clearT = 0.9;
-      this.hud.toast(t('扇区已净化'));
-      sfx.clear();
-      this.projectiles.clearEnemyBullets();
-      if (room.isBoss || room.kind === 'elite' || room.n <= 2 || rnd() < BALANCE.rooms.weaponDropChance) {
-        this.interactables.spawnWeaponDrop(room.lootSpot.x, room.lootSpot.z);
-      }
-    }
-    if (room.clearT > 0) {
-      room.clearT -= dt;
-      if (room.clearT <= 0) {
-        if (room.isBoss && room.n === FINAL_SECTOR && !this.endless) this.victory();
-        else this.openUpgrade();
-      }
-    }
-  }
-
-  private openUpgrade(): void {
-    this.state = 'upgrade';
-    this.input.mouseDown = false;
-    this.input.releaseTouch();
-    this.hud.prompt(null);
-    const kind = this.room.kind;
-    const weights = kind === 'boss' || kind === 'elite' ? ROLL_WEIGHTS.boss : kind === 'challenge' ? ROLL_WEIGHTS.challenge : ROLL_WEIGHTS.room;
-    const title = kind === 'boss' ? t('核心战利品 · 选择一个模块') : kind === 'challenge' ? t('挑战完成 · 选择一个模块') : t('选择一个模块');
-    duck(true);
-    this.upgradeChoices = rollUpgrades(this.player, BALANCE.rooms.upgradeChoices, weights);
-    this.screens.showUpgrades(this.upgradeChoices, title, i => this.pickUpgrade(i));
-  }
-
-  private pickUpgrade(i: number): void {
-    const u = this.upgradeChoices[i];
-    if (!u || this.state !== 'upgrade') return;
-    this.applyUpgrade(u);
-    duck(false);
-    this.screens.toggle('upgradeScreen', false);
-    this.screens.setCrosshair(true);
-    this.state = 'play';
-    this.openPaths();
-  }
-
-  // Open the exit portals: one per offered next sector, each with a floating label.
-  private openPaths(): void {
-    const kinds = rollPaths(this.room.n + 1, this.room.kind);
-    this.room.openPortals(kinds);
-    for (const p of this.room.portals) {
-      const info = ROOM_INFO[p.kind];
-      const color = `#${info.color.toString(16).padStart(6, '0')}`;
-      this.portalTags.push(this.floaters.addTag(p.pos.x, 0.3, p.pos.z + 1.9, `<b style="color:${color}">${info.name}</b><span class="price" style="color:#cfd8ef">${info.desc}</span>`));
-    }
-    sfx.portal();
-    this.hud.toast(kinds.length > 1 ? t('选择下一个扇区') : t('裂隙通道已开启'));
-  }
-
-  // Challenge sectors: survive the timer while enemies keep pouring in, then everything dissolves.
-  private updateChallenge(dt: number): void {
-    const room = this.room;
-    if (!room.cleared) {
-      room.challengeT -= dt;
-      this.challengeSpawnT -= dt;
-      if (this.challengeSpawnT <= 0) {
-        // spawns speed up as the clock runs down
-        this.challengeSpawnT = 0.7 + 0.9 * (room.challengeT / 30);
-        const s = room.rollSpawn();
-        const [x, z] = room.findSpawn(this.player.pos, BALANCE.rooms.spawnMinDist, ENEMIES[s.kind].r);
-        this.enemies.addMarker(s.kind, x, z, 0.75, s.count, s.elite);
-      }
-      if (room.challengeT <= 0) {
-        this.enemies.purge();
-        room.cleared = true;
-        room.clearT = 1.2;
-        this.hud.toast(t('挑战完成'));
-        sfx.clear();
-        this.projectiles.clearEnemyBullets();
-      }
-    }
-    if (room.clearT > 0) {
-      room.clearT -= dt;
-      if (room.clearT <= 0) this.openUpgrade();
-    }
-  }
-
-  private goThroughPortal(kind: RoomKind): void {
-    this.state = 'transition';
-    sfx.portal();
-    this.hud.fade(true, `SECTOR ${String(this.room.n + 1).padStart(2, '0')} // ${ROOM_INFO[kind].name}`);
-    setTimeout(() => {
-      this.enterRoom(this.room.n + 1, kind);
-      this.hud.fade(false);
-      this.state = 'play';
-    }, 550);
-  }
-
-  private toTitle(): void {
-    this.state = 'title';
-    this.tutorial.hide();
-    this.perks.clear();
-    setMood('menu');
-    this.screens.hideAll();
-    this.hud.show(false);
-    this.hud.prompt(null);
-    this.enemies.clear();
-    this.projectiles.clear();
-    this.pickups.clear();
-    this.interactables.clear();
-    this.hazards.clear();
-    for (const t of this.portalTags) this.floaters.removeTag(t);
-    this.portalTags = [];
-    this.room.build(1, 'combat');
-    this.atmosphere.build(this.room);
-    this.player.setMech(MECHS[this.profile.selected]);
-    this.player.pos.set(0, 0, 3);
-    this.player.mesh.position.copy(this.player.pos);
-    this.player.mesh.visible = true;
-    this.refreshTitle();
-    this.screens.toggle('titleScreen', true);
-  }
-
-  private refreshTitle(): void {
-    const d = this.profile.daily;
-    const today = todayKey();
-    this.screens.showTitleInfo(this.profile.crystals, MECHS[this.profile.selected].name, d && d.date === today ? d.best : null, today);
-    const save = loadRun();
-    this.screens.showContinue(save ? t('继续上一局 · 扇区 {n}', { n: String(save.room).padStart(2, '0') }) : null);
-    this.screens.showDepth(this.profile.depth, this.profile.maxDepth, DEPTH_DESC, this.profile.wins);
-  }
-
-  private openCodex(): void {
-    this.screens.toggle('titleScreen', false);
-    this.renderCodex();
-    this.screens.toggle('codexScreen', true);
-  }
-
-  private closeCodex(): void {
-    this.screens.toggle('codexScreen', false);
-    this.screens.toggle('titleScreen', true);
-  }
-
-  private renderCodex(): void {
-    this.screens.showCodex(this.profile, this.codexTab);
-  }
-
-  private openHangar(): void {
-    this.screens.toggle('titleScreen', false);
-    this.renderHangar();
-    this.screens.toggle('hangarScreen', true);
-  }
-
-  private closeHangar(): void {
-    this.screens.toggle('hangarScreen', false);
-    this.player.setMech(MECHS[this.profile.selected]);
-    this.refreshTitle();
-    this.screens.toggle('titleScreen', true);
-  }
-
-  private renderHangar(): void {
-    this.screens.showHangar(this.profile, {
-      unlock: (id: MechId) => {
-        const def = MECHS[id];
-        if (this.profile.crystals < def.cost || this.profile.mechs.includes(id)) { sfx.denied(); return; }
-        this.profile.crystals -= def.cost;
-        this.profile.mechs.push(id);
-        this.profile.selected = id;
-        saveProfile(this.profile);
-        sfx.buy();
-        this.renderHangar();
-      },
-      select: (id: MechId) => {
-        this.profile.selected = id;
-        saveProfile(this.profile);
-        this.player.setMech(MECHS[id]);
-        sfx.pickup();
-        this.renderHangar();
-      },
-      buy: (id: TalentId) => {
-        const def = TALENTS.find(t => t.id === id)!;
-        const lvl = talentLevel(this.profile, id);
-        if (lvl >= def.max || this.profile.crystals < def.cost(lvl)) { sfx.denied(); return; }
-        this.profile.crystals -= def.cost(lvl);
-        this.profile.talents[id] = lvl + 1;
-        saveProfile(this.profile);
-        sfx.buy();
-        this.renderHangar();
-      },
-    });
-  }
-
-  private statLines(): StatLine[] {
-    const p = this.player, w = p.weaponDef;
-    return [
-      { label: t('当前武器'), value: `${w.name} Lv.${p.activeSlot.level}` },
-      { label: t('伤害倍率'), value: `×${p.dmgMul.toFixed(2)}` },
-      { label: t('射速倍率'), value: `×${p.fireRateMul.toFixed(2)}` },
-      { label: t('暴击率 / 暴击伤害'), value: `${pct(p.critChance)} / ×${p.critMul.toFixed(1)}` },
-      { label: t('点燃 / 冰冻 / 闪电'), value: `${pct(p.burnChance)} / ${pct(p.frostChance)} / ${pct(p.shockChance)}` },
-      { label: t('穿透 / 反弹 / 多重'), value: `${p.pierce} / ${p.bounce} / ${p.extraShots}` },
-      { label: t('移动速度'), value: p.speed.toFixed(1) },
-      { label: t('冲刺冷却'), value: `${p.dashCooldown.toFixed(2)}s` },
-      { label: t('生命'), value: `${Math.ceil(p.hp)} / ${p.maxHp}` },
-      { label: t('数据碎片'), value: String(p.coins) },
-    ];
-  }
-
-  private buildEntries(): BuildEntry[] {
-    const out: BuildEntry[] = [];
-    for (const [id, count] of this.player.upgradeCounts) {
-      const u = UPGRADES.find(x => x.id === id);
-      if (u) out.push({ name: u.name, desc: u.desc, rarity: u.rarity, count });
-    }
-    const order = { legendary: 0, rare: 1, common: 2 };
-    return out.sort((a, b) => order[a.rarity] - order[b.rarity]);
+    if (p.revives <= 0) { this.gameOver(); return; }
+    p.revives--;
+    p.hp = p.maxHp * 0.5;
+    p.invuln = 2;
+    this.projectiles.clearEnemyBulletsNear(p.pos, 8);
+    this.fx.burst({ x: p.pos.x, y: 1, z: p.pos.z }, 0x55ff99, 40, 10, 0.25, 0.8);
+    this.fx.shockwave(p.pos.x, p.pos.z, 6, 0x55ff99);
+    sfx.levelUp();
+    this.hud.toast(t('复苏协议启动'));
   }
 
   private gameOver(): void {
@@ -765,18 +383,13 @@ export class Game {
     this.fx.burst({ x: this.player.pos.x, y: 0.8, z: this.player.pos.z }, 0x4ff0ff, 60, 14, 0.3, 1.2);
     sfx.boom();
     this.fx.shake(1.2);
-    const best = loadBest();
-    const isNewBest = !best || this.score > best.score;
-    if (isNewBest) saveBest({ room: this.room.n, score: this.score });
+    const pr = this.progress;
+    const isNewBest = pr.recordBest(this.room.n, this.score);
     const crystals = this.runCrystals() - this.crystalsAwarded;
-    this.profile.crystals += crystals;
+    pr.profile.crystals += crystals;
     this.recordRun(false);
-    if (this.daily) {
-      const today = todayKey();
-      const prev = this.profile.daily?.date === today ? this.profile.daily.best : 0;
-      this.profile.daily = { date: today, best: Math.max(prev, this.score) };
-    }
-    saveProfile(this.profile);
+    if (this.daily) pr.recordDaily(this.score);
+    pr.save();
     const summary = {
       room: this.room.n, score: this.score, kills: this.kills, coins: this.coinsEarned,
       bestCombo: this.bestCombo, isNewBest, buffs: this.player.buffs, crystals, daily: this.daily, depth: this.depth,
@@ -790,38 +403,10 @@ export class Game {
     return Math.floor(base * (1 + this.depth * DEPTH_CRYSTAL_BONUS));
   }
 
-  // Final sector cleared: pay out, unlock the next depth, and offer to keep going (endless).
-  private victory(): void {
-    this.state = 'won';
-    clearRun();
-    this.tutorial.hide();
-    setMood('menu');
-    this.input.mouseDown = false;
-    this.hud.prompt(null);
-    const crystals = this.runCrystals() + VICTORY_CRYSTALS;
-    this.crystalsAwarded = crystals - VICTORY_CRYSTALS;
-    this.profile.crystals += crystals;
-    this.profile.wins++;
-    this.recordRun(true);
-    let unlocked: number | null = null;
-    if (!this.daily && this.depth >= this.profile.maxDepth && this.depth < MAX_DEPTH) {
-      this.profile.maxDepth = this.depth + 1;
-      this.profile.depth = this.depth + 1;
-      unlocked = this.depth + 1;
-    }
-    if (this.daily) {
-      const today = todayKey();
-      const prev = this.profile.daily?.date === today ? this.profile.daily.best : 0;
-      this.profile.daily = { date: today, best: Math.max(prev, this.score) };
-    }
-    saveProfile(this.profile);
-    const best = loadBest();
-    if (!best || this.score > best.score) saveBest({ room: this.room.n, score: this.score });
-    sfx.levelUp();
-    this.fx.burst({ x: this.player.pos.x, y: 1, z: this.player.pos.z }, 0xffc83d, 60, 12, 0.3, 1.2);
-    this.screens.showVictory({
-      score: this.score, kills: this.kills, bestCombo: this.bestCombo, crystals, depth: this.depth,
-      unlocked, unlockedDesc: unlocked !== null ? DEPTH_DESC[unlocked] : '', buffs: this.player.buffs,
+  private recordRun(won: boolean): void {
+    this.progress.recordRun({
+      id: this.runId, date: todayKey(), mech: this.player.mechDef.id, depth: this.depth, daily: this.daily,
+      won, room: this.room.n, score: this.score, kills: this.kills, time: Math.round(this.runTime),
     });
   }
 
@@ -829,15 +414,40 @@ export class Game {
     this.endless = true;
     this.screens.toggle('winScreen', false);
     this.hud.toast(t('无尽模式 · 继续深入'));
-    this.openUpgrade();
+    this.sector.openUpgrade();
   }
 
-  private changeDepth(delta: number): void {
-    const d = Math.max(0, Math.min(this.profile.maxDepth, this.profile.depth + delta));
-    if (d === this.profile.depth) { sfx.denied(); return; }
-    this.profile.depth = d;
-    saveProfile(this.profile);
-    sfx.weaponSwitch(d);
-    this.refreshTitle();
+  private applySettings(s: Settings): void {
+    this.settings = s;
+    saveSettings(s);
+    setVolume(s.volume);
+    setMusicVolume(s.music * s.volume);
+    this.fx.shakeScale = s.shake ? 1 : 0;
+    this.floaters.enabled = s.damageNumbers;
+    this.tutorial.enabled = s.hints;
+    if (!s.hints) this.tutorial.hide();
+  }
+
+  private toTitle(): void {
+    this.state = 'title';
+    this.tutorial.hide();
+    setMood('menu');
+    this.screens.hideAll();
+    this.hud.show(false);
+    this.hud.prompt(null);
+    this.clearWorld();
+    this.buildBackdrop();
+    this.player.mesh.visible = true;
+    this.menus.refreshTitle();
+    this.screens.toggle('titleScreen', true);
+  }
+
+  // Sector 1 with the selected mech spinning in the middle, behind the title screen.
+  private buildBackdrop(): void {
+    this.room.build(1, 'combat');
+    this.atmosphere.build(this.room);
+    this.player.setMech(MECHS[this.progress.profile.selected]);
+    this.player.pos.set(0, 0, 3);
+    this.player.mesh.position.copy(this.player.pos);
   }
 }

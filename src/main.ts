@@ -6,8 +6,10 @@ import './style.css';
 import { LANG, translateDom } from './core/i18n';
 import { Game } from './game/game';
 import { loadSettings, saveSettings } from './ui/settings';
+import { version } from '../package.json';
 
 translateDom(document.body);
+document.getElementById('version')!.textContent = `v${version}`;
 
 // Language switch: save the choice and reload, since all text is resolved at load time.
 const langBtn = document.getElementById('langBtn')!;

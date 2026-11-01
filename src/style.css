@@ -310,3 +310,4 @@ canvas { touch-action: none; }
 }
 
 #langBtn { position: absolute; top: 16px; right: 18px; padding: 5px 12px; font-family: var(--font-num); letter-spacing: 2px; }
+#version { position: absolute; right: 18px; bottom: 12px; font-family: var(--font-num); font-size: 11px; letter-spacing: 2px; color: rgba(219, 231, 255, .45); pointer-events: none; }
