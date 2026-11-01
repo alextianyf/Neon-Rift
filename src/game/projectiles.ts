@@ -150,15 +150,13 @@ export class Projectiles {
     this.clearEnemyBullets();
   }
 
-  // Shield enemies deflect shots that hit their front (they face the player).
+  // Shield enemies deflect shots that hit their front (`e.dir`, which turns slowly toward the player).
   // Railgun-grade piercing goes straight through; explosions and elements go around it.
   private blockedByShield(b: Bullet, e: Enemy): boolean {
-    if (e.kind !== 'shield' || b.pierce >= 5) return false;
-    const p = this.g.player.pos;
-    const fx = p.x - e.pos.x, fz = p.z - e.pos.z, fl = Math.hypot(fx, fz) || 1;
+    if (e.kind !== 'shield' || b.pierce >= 5 || e.dir.lengthSq() === 0) return false;
     const vl = b.vel.length() || 1;
     // bullet travelling against the shield's facing = hitting the front
-    if ((b.vel.x * fx + b.vel.z * fz) / (vl * fl) > -0.35) return false;
+    if ((b.vel.x * e.dir.x + b.vel.z * e.dir.z) / vl > -0.35) return false;
     this.g.fx.burst(b.mesh.position, e.def.color, 4, 6, 0.12, 0.25);
     sfx.deflect();
     return true;

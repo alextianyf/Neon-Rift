@@ -96,6 +96,8 @@ export const sfx = {
   coin: throttled(50, () => tone(1320, 0.07, 'square', 0.04, 1.3)),
   buy: () => { tone(880, 0.08, 'square', 0.08); setTimeout(() => tone(1320, 0.14, 'square', 0.08), 70); },
   denied: () => tone(140, 0.18, 'square', 0.1, 0.8),
+  // magazine out, then a click as the new one seats
+  reload: () => { noise(0.06, 0.12, 2500, 'highpass'); setTimeout(() => tone(1100, 0.04, 'square', 0.05, 0.7), 140); },
   levelUp: () => { tone(523, 0.1, 'triangle', 0.12); setTimeout(() => tone(659, 0.1, 'triangle', 0.12), 80); setTimeout(() => tone(1046, 0.2, 'triangle', 0.12), 160); },
   riftOpen: throttled(80, (big: boolean) => {
     noise(big ? 0.9 : 0.35, big ? 0.4 : 0.12, big ? 1500 : 3000, 'bandpass');

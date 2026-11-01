@@ -14,7 +14,7 @@ import { MAX_WEAPON_SLOTS } from '../data/weapons';
 import { Floaters } from '../ui/floaters';
 import { Hud } from '../ui/hud';
 import type { CodexKind } from '../ui/profile';
-import { buildEntries, statLines } from '../ui/runStats';
+import { buildEntries, statLines, statusIcons } from '../ui/runStats';
 import { clearRun, saveRun, type RunSave } from '../ui/runsave';
 import { Screens } from '../ui/screens';
 import { loadSettings, saveSettings, type Settings } from '../ui/settings';
@@ -35,7 +35,7 @@ import { Room } from './room';
 import { SectorFlow } from './sector';
 import { Tutorial } from './tutorial';
 
-export type GameState = 'title' | 'play' | 'paused' | 'upgrade' | 'transition' | 'dead' | 'won';
+export type GameState = 'title' | 'play' | 'paused' | 'upgrade' | 'portal' | 'transition' | 'dead' | 'won';
 
 const tmp = new THREE.Vector3();
 
@@ -88,6 +88,8 @@ export class Game {
   constructor() {
     bindControls(this);
     this.screens.onClick('restartBtn', () => this.start(this.daily));
+    this.screens.onClick('portalGo', () => this.sector.answerPortal(true));
+    this.screens.onClick('portalStay', () => this.sector.answerPortal(false));
     this.screens.onClick('menuBtn', () => this.toTitle());
     this.screens.onClick('winContinue', () => this.continueEndless());
     this.screens.onClick('winMenu', () => this.toTitle());
@@ -123,14 +125,15 @@ export class Game {
         this.time += dt;
         this.player.mesh.rotation.y = this.time * 0.6;
       }
-      if (this.state !== 'paused' && this.state !== 'upgrade') {
+      const frozen = this.state === 'paused' || this.state === 'upgrade' || this.state === 'portal';
+      if (!frozen) {
         this.fx.update(dt);
         this.room.updatePortal(dt, this.time);
         this.atmosphere.update(dt, this.time, this.player.pos);
       }
       this.gfx.updateCamera(dt, this.player.pos, this.player.aim, this.fx.shakeAmt);
       this.fx.decayShake(dt);
-      this.floaters.update(this.state === 'paused' || this.state === 'upgrade' ? 0 : dt);
+      this.floaters.update(frozen ? 0 : dt);
       this.gfx.render(dt);
     };
     loop();
@@ -147,7 +150,7 @@ export class Game {
     setDepth(this.depth);
     const mech = MECHS[save?.mech ?? profile.selected] ?? MECHS.vanguard;
     this.player.reset(mech, profile.talents);
-    this.hud.setSkill(mech.skillName);
+    this.hud.setSkill(mech.skill, mech.skillName);
     this.score = this.kills = this.coinsEarned = this.combo = this.bestCombo = this.bossKills = 0;
     this.comboT = this.runTime = 0;
     this.runId = Date.now();
@@ -168,7 +171,7 @@ export class Game {
       this.bossKills = save.bossKills;
       this.runTime = save.playTime;
     }
-    this.hud.setBuffs(this.player.buffs);
+    this.hud.setModules(buildEntries(this.player));
     this.hud.showBossBar(false);
     this.refreshWeapons();
     this.hud.showBest(loadBest());
@@ -261,6 +264,7 @@ export class Game {
     this.bestCombo = Math.max(this.bestCombo, this.combo);
     if (e.def.boss) this.bossKills++;
     this.perks.onKill(e);
+    if (!e.def.boss && !this.enemies.purging) this.interactables.rollKillDrop(e.pos.x, e.pos.z, e.def.cost, e.elite);
     const reward = e.elite ? BALANCE.elites.reward : 1;
     this.score += Math.round(e.def.score * reward * (1 + Math.min(C.maxBonus, this.combo * C.scorePerKill)));
     if (this.player.leech) {
@@ -276,7 +280,7 @@ export class Game {
   applyUpgrade(u: UpgradeDef): void {
     this.discover('upgrades', u.id);
     this.player.addUpgrade(u);
-    this.hud.setBuffs(this.player.buffs);
+    this.hud.setModules(buildEntries(this.player));
     sfx.pickup();
   }
 
@@ -338,15 +342,25 @@ export class Game {
       if (this.comboT <= 0) this.combo = 0;
     }
 
-    const boss = this.enemies.boss;
+    const boss = this.enemies.boss, p = this.player;
+    // gauge sits on the ground just in front of (below, on screen) the mech's feet
+    const sp = tmp.set(p.pos.x, 0, p.pos.z + 1.2).project(this.gfx.camera);
+    this.hud.mechGauge((sp.x + 1) / 2 * innerWidth, (1 - sp.y) / 2 * innerHeight, {
+      dashCd: Math.max(0, p.dashCd), dashTotal: p.dashCooldown, skillCd: Math.max(0, p.skillCd), skillT: Math.max(0, p.skillT), skillDur: p.skillDur,
+    });
     this.hud.update({
-      hp: this.player.hp,
-      maxHp: this.player.maxHp,
-      shield: this.player.shield,
-      dashReady: 1 - this.player.dashCd / this.player.dashCooldown,
-      reload: this.player.reload,
-      skillReady: this.player.skillReady,
-      skillActive: this.player.skillT > 0,
+      hp: p.hp,
+      maxHp: p.maxHp,
+      shield: p.shield,
+      dashCd: Math.max(0, p.dashCd),
+      dashTotal: p.dashCooldown,
+      skillCd: Math.max(0, p.skillCd),
+      skillTotal: p.mechDef.skillCd,
+      skillActive: p.skillT > 0,
+      reload: p.reloadProgress,
+      slots: p.slots,
+      magSize: s => p.magSize(s.id),
+      statuses: statusIcons(p),
       room: this.room.n,
       roomLabel: this.room.label,
       score: this.score,

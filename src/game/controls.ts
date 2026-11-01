@@ -19,9 +19,14 @@ export function bindControls(g: Game): void {
         if (b === 'a' || b === 'lt') dash();
         else if (b === 'x') g.interactables.interact();
         else if (b === 'y') g.player.trySkill(g);
+        else if (b === 'b') g.player.startReload();
         else if (b === 'rb') cycleWeapon(1);
         else if (b === 'lb') cycleWeapon(-1);
         else if (b === 'start') g.setPaused(true);
+        break;
+      case 'portal':
+        if (b === 'a') g.sector.answerPortal(true);
+        else if (b === 'b') g.sector.answerPortal(false);
         break;
       case 'paused':
         if (b === 'start' || b === 'b') g.setPaused(false);
@@ -52,6 +57,7 @@ export function bindControls(g: Game): void {
     else if (a === 'skill') g.player.trySkill(g);
     else if (a === 'use') g.interactables.interact();
     else if (a === 'swap') cycleWeapon(1);
+    else if (a === 'reload') g.player.startReload();
     else if (a === 'pause') g.setPaused(true);
   };
 
@@ -63,7 +69,11 @@ export function bindControls(g: Game): void {
         if (k === ' ' && !repeat) dash();
         if (k === 'e' && !repeat) g.interactables.interact();
         if (k === 'f' && !repeat) g.player.trySkill(g);
+        if (k === 'r' && !repeat) g.player.startReload();
         if (k === 'escape' || k === 'p') g.setPaused(true);
+      } else if (g.state === 'portal' && !repeat) {
+        if (k === 'e' || k === 'enter') g.sector.answerPortal(true);
+        else if (k === 'escape') g.sector.answerPortal(false);
       } else if (g.state === 'paused' && (k === 'escape' || k === 'p')) {
         g.setPaused(false);
       } else if (g.state === 'upgrade' && /^[1-9]$/.test(k)) {

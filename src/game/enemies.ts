@@ -94,7 +94,7 @@ export class Enemies {
   readonly list: Enemy[] = [];
   private readonly markers: Marker[] = [];
   private readonly blasts: Blast[] = [];
-  private purging = false;
+  purging = false;  // the room is being wiped (challenge end): no splits, blasts or loot
 
   constructor(private readonly g: Game) {}
 
@@ -251,8 +251,8 @@ export class Enemies {
         e.pos.z,
       );
       if (!def.boss) {
-        // a sniper's locked shot keeps pointing where it will fire
-        const face = e.kind === 'sniper' && e.state === 'aim' ? e.dir : toP;
+        // a sniper's locked shot keeps pointing where it will fire; a shield faces where its shield is
+        const face = (e.kind === 'sniper' && e.state === 'aim') || e.kind === 'shield' ? e.dir : toP;
         e.mesh.rotation.y = Math.atan2(face.x, face.z) + (e.kind === 'shooter' ? e.t * 2 : 0);
       }
       e.mesh.scale.setScalar(e.scale * e.size);

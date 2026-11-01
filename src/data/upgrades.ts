@@ -1,4 +1,5 @@
 import { rnd } from '../core/rng';
+import { BALANCE } from './balance';
 import type { Player } from '../game/player';
 import { t } from '../core/i18n';
 
@@ -13,6 +14,8 @@ export interface UpgradeDef {
   apply(p: Player): void;
   available?(p: Player): boolean;  // extra condition for being offered
 }
+
+const CAP = BALANCE.caps;
 
 export const RARITY_LABEL: Record<Rarity, string> = { common: t('普通'), rare: t('稀有'), legendary: t('传说') };
 export const RARITY_PRICE: Record<Rarity, number> = { common: 20, rare: 35, legendary: 60 };
@@ -29,11 +32,13 @@ export const ROLL_WEIGHTS: Record<'room' | 'boss' | 'shop' | 'challenge' | 'trea
 export const UPGRADES: UpgradeDef[] = [
   // common
   { id: 'dmg', rarity: 'common', name: t('过载弹芯'), desc: t('伤害 +20%'), apply: p => { p.dmgMul *= 1.2; } },
-  { id: 'rate', rarity: 'common', name: t('急速扳机'), desc: t('射速 +15%'), apply: p => { p.rateMul *= 1.15; } },
+  { id: 'rate', rarity: 'common', name: t('急速扳机'), desc: t('射速 +15%'), apply: p => { p.rateMul *= 1.15; }, available: p => p.rateMul < CAP.fireRateMul },
+  { id: 'reload', rarity: 'common', name: t('快速装填'), desc: t('装弹速度 +25%'), apply: p => { p.reloadMul *= 1.25; }, available: p => 1 / p.reloadMul > CAP.reloadTimeMul },
+  { id: 'mag', rarity: 'common', name: t('扩容弹匣'), desc: t('弹匣容量 +30%'), max: 3, apply: p => { p.magMul *= 1.3; } },
   { id: 'hull', rarity: 'common', name: t('强化外壳'), desc: t('最大生命 +25，并回复 25'), apply: p => { p.maxHp += 25; p.heal(25); } },
-  { id: 'thrust', rarity: 'common', name: t('轻量推进'), desc: t('移动速度 +10%'), apply: p => { p.speed *= 1.1; } },
-  { id: 'dash', rarity: 'common', name: t('相位冲刺'), desc: t('冲刺冷却 -25%'), max: 3, apply: p => { p.dashCdMul *= 0.75; } },
-  { id: 'crit', rarity: 'common', name: t('精准校准'), desc: t('暴击率 +8%'), apply: p => { p.critChance += 0.08; } },
+  { id: 'thrust', rarity: 'common', name: t('轻量推进'), desc: t('移动速度 +10%'), apply: p => { p.speed *= 1.1; }, available: p => p.speed < p.mechDef.speed * CAP.speedMul },
+  { id: 'dash', rarity: 'common', name: t('相位冲刺'), desc: t('冲刺冷却 -25%'), max: 3, apply: p => { p.dashCdMul *= 0.75; }, available: p => p.dashCooldown > CAP.dashCooldown },
+  { id: 'crit', rarity: 'common', name: t('精准校准'), desc: t('暴击率 +8%'), apply: p => { p.critChance = Math.min(CAP.critChance, p.critChance + 0.08); }, available: p => p.critChance < CAP.critChance },
   { id: 'magnet', rarity: 'common', name: t('磁力回收'), desc: t('碎片获取 +30%，拾取范围增大'), apply: p => { p.coinMul *= 1.3; p.magnetMul *= 1.4; } },
   { id: 'repair', rarity: 'common', name: t('紧急维修'), desc: t('回满生命'), apply: p => p.heal(Infinity), available: p => p.hp < p.maxHp * 0.8 },
 
@@ -73,7 +78,8 @@ export const UPGRADES: UpgradeDef[] = [
 ];
 
 // Draw `n` distinct upgrades the player can still take, picking a rarity by weight first.
-export function rollUpgrades(p: Player, n: number, weights: Record<Rarity, number>): UpgradeDef[] {
+// `rand` defaults to the seeded run RNG; combat-time rolls pass Math.random so the run's sector layouts stay fixed.
+export function rollUpgrades(p: Player, n: number, weights: Record<Rarity, number>, rand: () => number = rnd): UpgradeDef[] {
   const pool = UPGRADES.filter(u => (u.max === undefined || p.upgradeCount(u.id) < u.max) && (!u.available || u.available(p)));
   const picks: UpgradeDef[] = [];
   while (picks.length < n && pool.length) {
@@ -81,14 +87,14 @@ export function rollUpgrades(p: Player, n: number, weights: Record<Rarity, numbe
     // fall back to any rarity when the weighted ones are exhausted
     const candidates = rarities.length ? rarities : [...new Set(pool.map(u => u.rarity))];
     const total = candidates.reduce((s, r) => s + (weights[r] || 1), 0);
-    let roll = rnd() * total;
+    let roll = rand() * total;
     let rarity = candidates[0];
     for (const r of candidates) {
       roll -= weights[r] || 1;
       if (roll <= 0) { rarity = r; break; }
     }
     const options = pool.filter(u => u.rarity === rarity);
-    const pick = options[Math.floor(rnd() * options.length)];
+    const pick = options[Math.floor(rand() * options.length)];
     picks.push(pick);
     pool.splice(pool.indexOf(pick), 1);
   }

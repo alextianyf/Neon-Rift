@@ -6,7 +6,7 @@ const PAD_BUTTONS: [number, PadButton][] = [[0, 'a'], [1, 'b'], [2, 'x'], [3, 'y
 const DEADZONE = 0.2;
 const STICK_RADIUS = 56;  // px of thumb travel for a full touch-stick push
 
-export type TouchAction = 'dash' | 'skill' | 'use' | 'swap' | 'pause';
+export type TouchAction = 'dash' | 'skill' | 'use' | 'swap' | 'reload' | 'pause';
 
 // One on-screen stick: where the thumb landed and its current offset.
 interface TouchStick {

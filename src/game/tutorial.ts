@@ -25,15 +25,21 @@ const HINTS: HintDef[] = [
   },
   {
     id: 'skill', when: g => g.room.time > 15 && g.player.skillReady >= 1 && g.enemies.list.length > 0,
-    text: t('<kbd>F</kbd> 释放机体技能，冷却条在左上角'),
-    pad: t('<kbd>Y</kbd> 释放机体技能，冷却条在左上角'),
+    text: t('<kbd>F</kbd> 释放机体技能，冷却显示在屏幕下方'),
+    pad: t('<kbd>Y</kbd> 释放机体技能，冷却显示在屏幕下方'),
     touch: t('点右侧 <kbd>技能</kbd> 按钮释放机体技能'),
   },
   {
+    id: 'reload', when: g => g.player.reloadT > 0,
+    text: t('弹匣打空会自动装弹，也可以随时按 <kbd>R</kbd> 装弹 · 初始武器弹药无限，拾取的武器备弹有限'),
+    pad: t('弹匣打空会自动装弹，也可以随时按 <kbd>B</kbd> 装弹 · 初始武器弹药无限，拾取的武器备弹有限'),
+    touch: t('弹匣打空会自动装弹，也可以点 <kbd>换弹</kbd> · 初始武器弹药无限，拾取的武器备弹有限'),
+  },
+  {
     id: 'weapon', when: g => g.interactables.hasFreeWeapon,
-    text: t('走近武装按 <kbd>E</kbd> 拾取 · 最多带 3 把，<kbd>1 2 3</kbd> / <kbd>Q</kbd> 切换 · 拾取同一把会升级'),
-    pad: t('走近武装按 <kbd>X</kbd> 拾取 · 最多带 3 把，<kbd>LB</kbd> / <kbd>RB</kbd> 切换 · 拾取同一把会升级'),
-    touch: t('走近武装点 <kbd>拾取</kbd> · 最多带 3 把，点 <kbd>换枪</kbd> 切换 · 拾取同一把会升级'),
+    text: t('走近武装按 <kbd>E</kbd> 拾取 · 最多带 3 把，<kbd>1 2 3</kbd> / <kbd>Q</kbd> 切换 · 拾取同一把会升级并补满弹药'),
+    pad: t('走近武装按 <kbd>X</kbd> 拾取 · 最多带 3 把，<kbd>LB</kbd> / <kbd>RB</kbd> 切换 · 拾取同一把会升级并补满弹药'),
+    touch: t('走近武装点 <kbd>拾取</kbd> · 最多带 3 把，点 <kbd>换枪</kbd> 切换 · 拾取同一把会升级并补满弹药'),
   },
   {
     id: 'portal', when: g => g.room.portals.length > 1,

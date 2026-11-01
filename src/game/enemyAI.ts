@@ -24,6 +24,8 @@ const SNIPER_LOCK = 0.35;   // the aim stops tracking this long before the shot,
 const WEAVER_WARN = 1.0;
 const WEAVER_BEAM = 3.2;
 const BEAM_LENGTH = 16;
+const SHIELD_TURN = 1.4;    // rad/s: slow enough that circling or dashing gets you behind the shield
+const wrapAngle = (a: number) => Math.atan2(Math.sin(a), Math.cos(a));
 
 function enrage(e: Enemy, g: Game, msg: string): void {
   if (e.enraged || e.hp >= e.maxHp * 0.5) return;
@@ -109,9 +111,17 @@ const sniper: Behavior = (e, f, g) => {
   if (e.cd <= 0 && f.dist < 24) { e.state = 'aim'; e.stateT = SNIPER_AIM; e.dir.copy(f.toP); }
 };
 
-// Advances behind its frontal shield (blocking is handled in projectiles).
-const shield: Behavior = (_e, f) => {
-  f.desired.copy(f.toP).multiplyScalar(f.dist > 2 ? f.spd : 0);
+// Advances behind its frontal shield (blocking is handled in projectiles). `e.dir` is where the
+// shield faces; it turns toward the player at a limited rate and the enemy walks the way it faces,
+// slowing down while it's still turning to catch up.
+const shield: Behavior = (e, f) => {
+  if (e.dir.lengthSq() === 0) e.dir.copy(f.toP);
+  const cur = Math.atan2(e.dir.x, e.dir.z);
+  const off = wrapAngle(Math.atan2(f.toP.x, f.toP.z) - cur);
+  const step = SHIELD_TURN * (e.enraged ? 1.3 : 1) * f.dt;
+  const a = cur + Math.max(-step, Math.min(step, off));
+  e.dir.set(Math.sin(a), 0, Math.cos(a));
+  f.desired.copy(e.dir).multiplyScalar(f.dist > 2 ? f.spd * (Math.abs(off) > 1 ? 0.4 : 1) : 0);
 };
 
 // Keeps its distance and opens small rifts that release swarms. A priority target.

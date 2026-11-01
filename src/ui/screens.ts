@@ -1,3 +1,4 @@
+import { BALANCE } from '../data/balance';
 import { MECHS, TALENTS, type MechId, type TalentId } from '../data/meta';
 import { ENEMY_NOTES } from '../data/codex';
 import { ENEMIES, type EnemyKind } from '../data/enemies';
@@ -9,8 +10,8 @@ import { $ } from './dom';
 import type { Settings } from './settings';
 import { joinList, t } from '../core/i18n';
 
-export type OverlayId = 'titleScreen' | 'upgradeScreen' | 'pauseScreen' | 'deadScreen' | 'hangarScreen' | 'winScreen' | 'codexScreen';
-const OVERLAYS: OverlayId[] = ['titleScreen', 'upgradeScreen', 'pauseScreen', 'deadScreen', 'hangarScreen', 'winScreen', 'codexScreen'];
+export type OverlayId = 'titleScreen' | 'upgradeScreen' | 'pauseScreen' | 'deadScreen' | 'hangarScreen' | 'winScreen' | 'codexScreen' | 'portalScreen';
+const OVERLAYS: OverlayId[] = ['titleScreen', 'upgradeScreen', 'pauseScreen', 'deadScreen', 'hangarScreen', 'winScreen', 'codexScreen', 'portalScreen'];
 const hex = (c: number) => `#${c.toString(16).padStart(6, '0')}`;
 const fmtTime = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 
@@ -74,6 +75,15 @@ export class Screens {
 
   setCrosshair(visible: boolean): void {
     this.crosshair.classList.toggle('hidden', !visible);
+  }
+
+  showPortal(title: string, desc: string, color: string): void {
+    const title$ = $('portalTitle');
+    title$.textContent = title;
+    title$.style.color = color;
+    $('portalDesc').textContent = desc;
+    this.toggle('portalScreen', true);
+    this.setCrosshair(false);
   }
 
   showUpgrades(choices: UpgradeDef[], title: string, onPick: (index: number) => void): void {
@@ -220,12 +230,13 @@ export class Screens {
       const row = document.createElement('div');
       row.className = `mechrow${selected ? ' selected' : ''}`;
       row.style.setProperty('--mc', accent);
-      const stats = t('生命 {hp} · 速度 {sp} · 冲刺冷却 ×{dc}', { hp: def.hp, sp: def.speed, dc: def.dashCdMul }) +
+      const stats = t('生命 {hp} · 速度 {sp} · 冲刺冷却 {dc}s', { hp: def.hp, sp: def.speed, dc: +(BALANCE.player.dashCooldown * def.dashCdMul).toFixed(2) }) +
         (def.critBonus ? t(' · 暴击 +{n}%', { n: def.critBonus * 100 }) : '') +
         (def.shield ? t(' · 每扇区护盾 {n}', { n: def.shield }) : '');
       row.innerHTML =
         `<div class="mhead"><b>${def.name}</b><span class="dim">${def.desc}</span></div>` +
         `<div class="mstats">${stats}</div>` +
+        `<div class="mstats">${t('初始武器：{w}（弹药无限，不可丢弃）', { w: WEAPONS[def.starter].name })}</div>` +
         `<div class="mskill">${t('技能 [F] <b>{name}</b>：{desc}（冷却 {cd}s）', { name: def.skillName, desc: def.skillDesc, cd: def.skillCd })}</div>`;
       const btn = document.createElement('button');
       btn.className = 'mini';

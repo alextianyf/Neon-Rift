@@ -16,6 +16,8 @@ export class SectorFlow {
   private portalTags: Tag[] = [];
   private challengeSpawnT = 0;
   private choices: UpgradeDef[] = [];
+  private pendingPortal: RoomKind | null = null;
+  private portalArmed = true;  // false after cancelling, until the player steps off the portal
 
   constructor(private readonly g: Game) {}
 
@@ -71,8 +73,32 @@ export class SectorFlow {
     const g = this.g;
     if (g.room.kind === 'challenge') this.updateChallenge(dt);
     else this.checkClear(dt);
-    const path = g.state === 'play' ? g.room.portalReached(g.player.pos) : null;
-    if (path) this.goThroughPortal(path);
+    if (g.state !== 'play') return;
+    const path = g.room.portalReached(g.player.pos);
+    if (!path) this.portalArmed = true;
+    else if (this.portalArmed) this.askPortal(path);
+  }
+
+  // Portals ask before warping, so walking over one while grabbing loot doesn't end the sector.
+  private askPortal(kind: RoomKind): void {
+    const g = this.g, info = ROOM_INFO[kind];
+    this.pendingPortal = kind;
+    g.state = 'portal';
+    g.input.mouseDown = false;
+    g.input.releaseTouch();
+    g.hud.prompt(null);
+    g.screens.showPortal(t('进入 {name}？', { name: info.name }), info.desc, `#${info.color.toString(16).padStart(6, '0')}`);
+  }
+
+  answerPortal(go: boolean): void {
+    const g = this.g, kind = this.pendingPortal;
+    if (g.state !== 'portal' || !kind) return;
+    this.pendingPortal = null;
+    g.screens.toggle('portalScreen', false);
+    g.screens.setCrosshair(true);
+    g.state = 'play';
+    if (go) this.goThroughPortal(kind);
+    else this.portalArmed = false;
   }
 
   openUpgrade(): void {

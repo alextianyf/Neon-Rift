@@ -6,7 +6,7 @@ export const BALANCE = {
     radius: 0.55,
     dashDuration: 0.17,
     dashSpeed: 26,
-    dashCooldown: 0.9,
+    dashCooldown: 3,       // seconds; mechs scale it (dashCdMul), floor in caps
     dashInvuln: 0.28,
     hurtInvuln: 0.8,
     hurtKnockback: 12,
@@ -80,6 +80,25 @@ export const BALANCE = {
   shop: {
     healAmount: 40,
     healPrice: 15,
+    ammoPrice: 12,         // refills every picked-up weapon's reserve
+  },
+  // Hard limits on stats that upgrades push, so late runs can't spam dashes or fire nonstop.
+  caps: {
+    dashCooldown: 2,       // seconds, minimum
+    fireRateMul: 2.2,      // maximum fire-rate multiplier (everything combined: modules, skill, frenzy, sentinel)
+    reloadTimeMul: 0.5,    // reload never gets faster than half the weapon's base reload time...
+    reloadTime: 0.8,       // ...and never below this many seconds
+    speedMul: 1.4,         // maximum move speed relative to the mech's base speed
+    critChance: 0.6,
+  },
+  // Rare loot from regular kills: a module, a weapon or ammo, dropped on the floor (press E).
+  killDrops: {
+    chance: 0.025,         // per kill, scaled by the enemy's spawn cost (swarmers ~0.35x, brutes 3x)
+    eliteMul: 4,
+    perSector: 2,          // at most this many kill drops per sector
+    kind: { module: 50, weapon: 30, ammo: 20 },
+    rarity: { common: 80, rare: 18, legendary: 2 },   // modules: the better, the rarer
+    weaponTier: [70, 25, 5],                          // weapons by shop price: <=30, 35, >=40
   },
   combo: {
     window: 2.5,           // seconds between kills to keep the combo going

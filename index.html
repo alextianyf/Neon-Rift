@@ -7,7 +7,7 @@
 <link rel="icon" type="image/svg+xml" href="favicon.svg">
 </head>
 <body>
-<div id="cross" class="hidden"></div>
+<div id="cross" class="hidden"><i></i></div>
 <div id="floaters"></div>
 <div id="vignette"></div>
 <div id="scan"></div>
@@ -18,10 +18,6 @@
     <div class="hrow"><span class="lbl">INTEGRITY</span><span class="cn">机体完整度</span><span id="shieldPip" class="hidden">◆ 护盾</span></div>
     <div class="seg"><div id="hpFill"></div></div>
     <div class="hrow num" id="hpText"></div>
-    <div class="hrow"><span class="lbl">BOOST</span><span class="cn">推进器</span></div>
-    <div class="seg thin"><div id="dashFill"></div></div>
-    <div class="hrow skillrow"><span class="lbl">SKILL</span><span class="cn" id="skillName"></span><kbd class="skey">F</kbd></div>
-    <div class="seg thin"><div id="skillFill"></div></div>
   </div>
   <div id="tr" class="hpanel right">
     <div class="sector"><span class="lbl">SECTOR</span><b id="roomN">01</b></div>
@@ -35,9 +31,16 @@
     <div class="seg boss"><div id="bossFill"></div></div>
   </div>
   <div id="combo" class="hidden"><span class="lbl">COMBO</span><b id="comboN">0</b><span class="cn">连杀</span><div class="seg tiny"><div id="comboFill"></div></div></div>
+  <div id="mechGauge"><div class="gdash"><div></div></div><div class="gskill"><div class="bar"><div></div></div><span></span></div></div>
   <div id="prompt" class="hidden"></div>
-  <div id="weapons"></div>
-  <div id="buffs"></div>
+  <div id="hotbar">
+    <div id="buffbar"><div id="statusTiles"></div><div id="moduleTiles"></div></div>
+    <div class="hotrow">
+      <div class="hk" id="hkDash"><span class="ico"></span><kbd>空格</kbd><span class="hname">冲刺</span><i class="sweep"></i><b class="cdn"></b></div>
+      <div class="hk skill" id="hkSkill"><span class="ico"></span><kbd>F</kbd><span class="hname"></span><i class="sweep"></i><b class="cdn"></b></div>
+      <div id="weapons"></div>
+    </div>
+  </div>
   <div id="toast"></div>
   <div id="hint"><span class="lbl">TIP</span><span id="hintText"></span></div>
 </div>
@@ -45,6 +48,7 @@
 <div id="touchUI">
   <button data-act="pause" class="tpause">❚❚</button>
   <button data-act="swap" class="tswap">换枪</button>
+  <button data-act="reload" class="treload">换弹</button>
   <button data-act="use" class="tuse">拾取</button>
   <button data-act="skill" class="tskill">技能</button>
   <button data-act="dash" class="tdash">冲刺</button>
@@ -62,10 +66,11 @@
     <kbd>鼠标</kbd><span>瞄准 / 左键射击</span>
     <kbd>空格 / 右键</kbd><span>推进冲刺（无敌帧）</span>
     <kbd>1 2 3 / Q / 滚轮</kbd><span>切换武装</span>
+    <kbd>R</kbd><span>装弹（初始武器弹药无限）</span>
     <kbd>E</kbd><span>拾取武装 / 终端交易</span>
     <kbd>F</kbd><span>机体技能（各机体不同）</span>
     <kbd>Esc / P</kbd><span>暂停（机体数据与设置）</span>
-    <kbd>手柄</kbd><span>左摇杆移动 · 右摇杆瞄准 · RT 射击 · A 冲刺 · X 交互 · Y 技能 · LB/RB 换武装</span>
+    <kbd>手柄</kbd><span>左摇杆移动 · 右摇杆瞄准 · RT 射击 · A 冲刺 · B 装弹 · X 交互 · Y 技能 · LB/RB 换武装</span>
   </div>
   <div class="tips">共 15 个扇区，每 5 个扇区一个裂隙核心 · 击败第 15 扇区的裂隙主宰即通关 · 重复拾取同一武装会升级</div>
   <div class="depthsel">
@@ -86,6 +91,17 @@
     <button class="go alt" id="hangarBtn">机库</button>
     <button class="go alt" id="codexBtn">图鉴</button>
   </div>
+</div>
+
+<div id="portalScreen" class="overlay dialog hidden">
+  <div class="kicker">RIFT GATE</div>
+  <h2 id="portalTitle"></h2>
+  <div id="portalDesc" class="sub"></div>
+  <div class="titlebtns">
+    <button class="go" id="portalGo">进入 <kbd>E</kbd></button>
+    <button class="go alt" id="portalStay">留在这里 <kbd>Esc</kbd></button>
+  </div>
+  <div class="padhint dim">手柄 A 进入 · B 取消</div>
 </div>
 
 <div id="upgradeScreen" class="overlay hidden">

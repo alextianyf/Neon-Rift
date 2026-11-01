@@ -23,9 +23,12 @@ canvas { display: block; cursor: none; }
 #scan { position: fixed; inset: 0; pointer-events: none; z-index: 7; opacity: .05;
   background: repeating-linear-gradient(0deg, #000 0 1px, transparent 1px 3px); }
 
-/* ---------- crosshair: four brackets and a dot ---------- */
+/* ---------- crosshair: four brackets and a dot ----------
+   #cross itself is only positioned (transform: translate, set from JS). Animations go on the child:
+   `scale` / `rotate` on #cross would be applied on top of that translate and fling it across the screen. */
 #cross { --c: var(--cyan); position: fixed; left: 0; top: 0; width: 30px; height: 30px; margin: -15px 0 0 -15px;
-  pointer-events: none; z-index: 8; filter: drop-shadow(0 0 4px var(--c));
+  pointer-events: none; z-index: 8; filter: drop-shadow(0 0 4px var(--c)); }
+#cross > i { position: absolute; inset: 0;
   background:
     linear-gradient(var(--c), var(--c)) top left / 9px 2px, linear-gradient(var(--c), var(--c)) top left / 2px 9px,
     linear-gradient(var(--c), var(--c)) top right / 9px 2px, linear-gradient(var(--c), var(--c)) top right / 2px 9px,
@@ -33,8 +36,19 @@ canvas { display: block; cursor: none; }
     linear-gradient(var(--c), var(--c)) bottom right / 9px 2px, linear-gradient(var(--c), var(--c)) bottom right / 2px 9px;
   background-repeat: no-repeat; }
 #cross::after { content: ""; position: absolute; left: 50%; top: 50%; width: 4px; height: 4px; margin: -2px 0 0 -2px; background: #fff; }
-#cross.hit { --c: #fff; animation: crossPop .09s ease-out; }
-#cross.kill { --c: var(--red); animation: crossPop .22s ease-out; }
+#cross.hit { --c: #fff; }
+#cross.hit > i { animation: crossPop .09s ease-out; }
+#cross.kill { --c: var(--red); }
+#cross.kill > i { animation: crossPop .22s ease-out; }
+/* reloading: the brackets spin while a ring around them fills up */
+#cross::before { content: ""; position: absolute; left: 50%; top: 50%; width: 44px; height: 44px; margin: -22px 0 0 -22px; border-radius: 50%;
+  opacity: 0; background: conic-gradient(var(--gold) calc(var(--rp, 0) * 360deg), rgba(255, 255, 255, .18) 0);
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 2.5px));
+  mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 2.5px)); }
+#cross.reloading { --c: var(--gold); }
+#cross.reloading > i { animation: crossSpin .7s linear infinite; }
+#cross.reloading::before { opacity: 1; }
+@keyframes crossSpin { from { rotate: 0deg; } to { rotate: 360deg; } }
 @keyframes crossPop { from { scale: 1.45; } to { scale: 1; } }
 
 /* ---------- HUD panels ---------- */
@@ -62,12 +76,6 @@ canvas { display: block; cursor: none; }
 .seg.tiny { height: 4px; width: 100px; margin: 4px 0 0 auto; }
 .seg.tiny::after { display: none; }
 #hpFill { background: linear-gradient(90deg, #ff3366, #ff9a5c); box-shadow: 0 0 10px #ff3366; }
-#dashFill { background: var(--cyan); box-shadow: 0 0 8px var(--cyan); }
-#skillFill { background: #c77dff; }
-#skillFill.ready { background: var(--gold); box-shadow: 0 0 8px var(--gold); }
-#skillFill.active { background: #fff; box-shadow: 0 0 10px #fff; }
-.skillrow { margin-top: 6px; }
-.skey { margin-left: auto; font-family: var(--font-num); font-size: 10px; color: #05070d; background: var(--gold); padding: 0 5px; }
 
 /* title & hangar */
 .titlebar { display: flex; gap: 22px; justify-content: center; flex-wrap: wrap; font-size: 14px; margin-bottom: 16px; }
@@ -108,12 +116,50 @@ button.mini:disabled { background: rgba(255, 255, 255, .15); color: rgba(255, 25
 @keyframes blink { 50% { opacity: 0; } }
 
 /* combo */
+/* gauge under the mech: dash recharge + skill time */
+#mechGauge { position: absolute; left: 0; top: 0; width: 64px; margin-left: -32px; display: flex; flex-direction: column; align-items: center; gap: 3px; }
+#mechGauge .gdash { width: 100%; height: 4px; background: rgba(4, 7, 14, .75); border: 1px solid rgba(79, 240, 255, .35); opacity: 0; transition: opacity .15s; }
+#mechGauge .gdash > div { height: 100%; background: var(--cyan); box-shadow: 0 0 6px var(--cyan); }
+#mechGauge .gdash.on { opacity: 1; }
+#mechGauge .gskill { display: flex; flex-direction: column; align-items: center; gap: 2px; opacity: 0; transition: opacity .15s; }
+#mechGauge .gskill.on { opacity: 1; }
+#mechGauge .gskill span { font-family: var(--font-num); font-size: 10px; letter-spacing: 1px; color: var(--gold); text-shadow: 0 0 4px #000, 0 0 2px #000; }
+#mechGauge .gskill .bar { display: none; width: 64px; height: 4px; background: rgba(4, 7, 14, .75); border: 1px solid rgba(255, 210, 63, .45); }
+#mechGauge .gskill .bar > div { height: 100%; background: var(--gold); box-shadow: 0 0 6px var(--gold); }
+#mechGauge .gskill.active .bar { display: block; }
+#mechGauge .gskill.active span { color: #fff; }
 #combo { position: absolute; right: 22px; top: 46%; transform: translateY(-50%); text-align: right; }
 #combo b { display: block; font-family: var(--font-num); font-size: 46px; font-weight: 800; line-height: 1; color: var(--pink); text-shadow: 0 0 16px var(--pink); }
 #comboFill { background: var(--pink); transition: none; }
 
+/* bottom hotbar: buff row on top; dash / skill keys and the weapon slots below */
+#hotbar { position: absolute; left: 50%; bottom: 16px; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 6px; }
+#buffbar { display: flex; gap: 10px; align-items: flex-end; min-height: 30px; }
+#statusTiles, #moduleTiles { display: flex; gap: 4px; flex-wrap: wrap; justify-content: center; max-width: 520px; }
+.bt { --bc: #9fb4ff; position: relative; width: 28px; height: 28px; display: grid; place-items: center; font-size: 13px; font-weight: 700; color: #fff;
+  background: rgba(8, 14, 28, .78); border: 1px solid var(--bc); box-shadow: inset 0 0 8px color-mix(in srgb, var(--bc) 35%, transparent); }
+.bt b { position: absolute; right: -3px; bottom: -5px; font-family: var(--font-num); font-size: 9px; color: var(--bc); text-shadow: 0 0 3px #000, 0 0 3px #000; }
+.bt.mod.common { --bc: #9fb4ff; }
+.bt.mod.rare { --bc: #c77dff; }
+.bt.mod.legendary { --bc: #ffc83d; }
+.bt.st { color: var(--bc); }
+.bt.st .sicon { width: 18px; height: 18px; }
+.bt.st b { left: 0; right: 0; bottom: -14px; text-align: center; font-size: 10px; }
+#statusTiles:not(:empty) { margin-bottom: 10px; }
+.hotrow { display: flex; gap: 8px; align-items: flex-end; }
+.hk { --p: 0; --kc: var(--cyan); position: relative; width: 56px; height: 56px; padding-top: 10px; box-sizing: border-box; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px;
+  background: var(--panel); border: 1px solid var(--kc); clip-path: var(--notch); color: var(--kc); overflow: hidden; }
+.hk.skill { --kc: var(--gold); }
+.hk .sicon { width: 22px; height: 22px; filter: drop-shadow(0 0 4px var(--kc)); }
+.hk kbd { position: absolute; left: 4px; top: 2px; font-family: var(--font-num); font-size: 9px; opacity: .85; }
+.hk .hname { font-size: 10px; color: #fff; opacity: .8; white-space: nowrap; max-width: 50px; overflow: hidden; text-overflow: ellipsis; }
+.hk .sweep { position: absolute; inset: 0; background: conic-gradient(rgba(3, 5, 10, .78) calc(var(--p) * 360deg), transparent 0); }
+.hk .cdn { position: absolute; inset: 0; display: grid; place-items: center; font-family: var(--font-num); font-size: 15px; color: #fff; text-shadow: 0 0 4px #000; }
+.hk.cooling { border-color: rgba(255, 255, 255, .18); }
+.hk.active { --kc: #fff; box-shadow: inset 0 0 16px rgba(255, 255, 255, .5); }
+
 /* weapon slots */
-#weapons { position: absolute; left: 50%; bottom: 18px; transform: translateX(-50%); display: flex; gap: 8px; }
+#weapons { display: flex; gap: 8px; }
 .slot { --wc: var(--cyan); position: relative; min-width: 122px; padding: 7px 14px 9px 12px; display: flex; align-items: center; gap: 8px;
   background: var(--panel); border: 1px solid rgba(255, 255, 255, .14); clip-path: var(--notch); opacity: .55; font-size: 14px; }
 .slot.on { opacity: 1; border-color: var(--wc); box-shadow: inset 0 0 18px color-mix(in srgb, var(--wc) 25%, transparent); }
@@ -122,13 +168,13 @@ button.mini:disabled { background: rgba(255, 255, 255, .15); color: rgba(255, 25
 .slot .wname { color: #fff; white-space: nowrap; }
 .slot .lv { font-family: var(--font-num); font-size: 10px; color: var(--gold); }
 .slot.empty .wname { opacity: .5; }
-.slot .reload { position: absolute; left: 0; right: 0; bottom: 0; height: 2px; }
-.slot .reload > div { height: 100%; width: 100%; background: var(--wc); }
-
-#buffs { position: absolute; left: 18px; bottom: 20px; font-size: 12px; opacity: .65; max-width: 300px; line-height: 1.6; }
+.slot .ammo { margin-left: auto; font-family: var(--font-num); font-size: 13px; color: #fff; white-space: nowrap; }
+.slot .ammo i { font-style: normal; font-size: 10px; opacity: .6; }
+.slot .ammo.low { color: var(--gold); }
+.slot .ammo.dry { color: var(--red); }
 
 /* interaction prompt: terminal line */
-#prompt { position: absolute; left: 50%; bottom: 84px; transform: translateX(-50%); padding: 8px 18px; text-align: center; font-size: 15px;
+#prompt { position: absolute; left: 50%; bottom: 128px; transform: translateX(-50%); padding: 8px 18px; text-align: center; font-size: 15px;
   background: var(--panel); border: 1px solid rgba(255, 210, 63, .5); clip-path: var(--notch); }
 #prompt kbd { font-family: var(--font-num); font-size: 12px; color: #05070d; background: var(--gold); padding: 1px 7px; margin-right: 6px; font-weight: 800; }
 #prompt .pdesc { font-size: 12px; opacity: .7; margin-top: 2px; }
@@ -176,6 +222,8 @@ button.mini:disabled { background: rgba(255, 255, 255, .15); color: rgba(255, 25
 .kicker { font-family: var(--font-num); font-size: 11px; letter-spacing: 6px; color: var(--cyan); opacity: .8; margin-bottom: 8px; }
 .overlay h1 { font-family: var(--font-num); font-size: 64px; font-weight: 800; margin: 0 0 6px; letter-spacing: 10px; color: #fff;
   text-shadow: 0 0 14px var(--cyan), 0 0 36px rgba(255, 77, 210, .6); }
+.overlay.dialog { background: rgba(4, 6, 12, .55); backdrop-filter: none; }
+.overlay.dialog .go kbd { font-family: var(--font-num); font-size: 10px; opacity: .7; margin-left: 6px; }
 .overlay h2 { font-size: 30px; font-weight: 700; margin: 0 0 20px; letter-spacing: 6px; }
 .overlay .sub { opacity: .75; margin-bottom: 26px; letter-spacing: 3px; font-size: 16px; }
 .glitch { position: relative; }
@@ -233,7 +281,7 @@ button.go:hover { background: rgba(79, 240, 255, .2); }
 }
 
 /* tutorial hint */
-#hint { position: absolute; left: 50%; bottom: 150px; transform: translate(-50%, 8px); display: flex; gap: 12px; align-items: center; max-width: min(760px, 90vw);
+#hint { position: absolute; left: 50%; bottom: 196px; transform: translate(-50%, 8px); display: flex; gap: 12px; align-items: center; max-width: min(760px, 90vw);
   padding: 9px 18px; font-size: 15px; background: var(--panel); border: 1px solid rgba(79, 240, 255, .55); clip-path: var(--notch);
   opacity: 0; transition: opacity .35s, transform .35s; pointer-events: none; }
 #hint.on { opacity: 1; transform: translate(-50%, 0); }
@@ -275,6 +323,7 @@ body.touch #cross { display: none; }
 #touchUI .tdash { right: 20px; bottom: 26px; width: 78px; height: 78px; font-size: 15px; border-color: var(--cyan); }
 #touchUI .tskill { right: 30px; bottom: 116px; width: 58px; height: 58px; border-color: var(--gold); }
 #touchUI .tswap { right: 112px; bottom: 96px; width: 50px; height: 50px; }
+#touchUI .treload { right: 168px; bottom: 30px; width: 50px; height: 50px; font-size: 12px; }
 #touchUI .tuse { right: 112px; bottom: 30px; width: 50px; height: 50px; font-size: 12px; }
 #touchUI .tpause { top: 12px; left: 50%; transform: translateX(-50%); width: 44px; height: 44px; font-size: 12px; border-radius: 4px; }
 .tstick { position: fixed; z-index: 4; width: 112px; height: 112px; margin: -56px 0 0 -56px; border-radius: 50%; pointer-events: none;
@@ -301,8 +350,7 @@ canvas { touch-action: none; }
   .hpanel { transform: scale(.78); }
   #tl { transform-origin: top left; }
   #tr { transform-origin: top right; }
-  #weapons { transform: translateX(-50%) scale(.8); transform-origin: bottom center; }
-  #buffs { display: none; }
+  #hotbar { transform: translateX(-50%) scale(.72); transform-origin: bottom center; bottom: 6px; }
   #toast { font-size: 18px; letter-spacing: 3px; }
   #hint { font-size: 12px; bottom: 96px; }
   #cards { flex-wrap: wrap; }
