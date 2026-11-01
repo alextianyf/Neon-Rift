@@ -106,7 +106,7 @@ export class Atmosphere {
     g.add(this.motes);
 
     // data pulses travelling along the floor grid lines; kept dim and thin so they never read as bullets
-    const pulseMat = new THREE.MeshBasicMaterial({ color: theme.clone().multiplyScalar(0.9), transparent: true, opacity: 0.7 });
+    const pulseMat = new THREE.MeshBasicMaterial({ color: theme.clone().multiplyScalar(0.6), transparent: true, opacity: 0.5 });
     const pulseGeo = new THREE.BoxGeometry(0.05, 0.01, 0.6);
     for (let i = 0; i < Math.round(area / 20); i++) {
       const mesh = new THREE.Mesh(pulseGeo, pulseMat);
@@ -127,7 +127,7 @@ export class Atmosphere {
         x += Math.cos(a) * step;
         z += Math.sin(a) * step;
       }
-      const mat = new THREE.LineBasicMaterial({ color: new THREE.Color(0xb455ff).multiplyScalar(2.4), transparent: true, opacity: 0.8 });
+      const mat = new THREE.LineBasicMaterial({ color: new THREE.Color(0xb455ff).multiplyScalar(1.6), transparent: true, opacity: 0.8 });
       g.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), mat));
       this.scars.push(mat);
     }

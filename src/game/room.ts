@@ -120,15 +120,17 @@ export class Room {
     for (let z = -hh; z <= hh; z += 2) pts.push(-hw, 0.01, z, hw, 0.01, z);
     const grid = new THREE.BufferGeometry();
     grid.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3));
-    g.add(new THREE.LineSegments(grid, new THREE.LineBasicMaterial({ color: theme.clone().multiplyScalar(0.3) })));
+    g.add(new THREE.LineSegments(grid, new THREE.LineBasicMaterial({ color: theme.clone().multiplyScalar(0.16) })));
 
     const wallMat = new THREE.MeshStandardMaterial({ color: 0x15131f, roughness: 0.7 });
-    const edgeCol = theme.clone().multiplyScalar(4.5);
-    const block = (x: number, z: number, w: number, d: number, h: number) => {
+    // obstacles glow brighter than the outer walls, which only need to read as a boundary
+    const edgeCol = theme.clone().multiplyScalar(2.4);
+    const wallEdgeCol = theme.clone().multiplyScalar(1.6);
+    const block = (x: number, z: number, w: number, d: number, h: number, edge = edgeCol) => {
       const geo = new THREE.BoxGeometry(w, h, d);
       const m = new THREE.Mesh(geo, wallMat);
       m.position.set(x, h / 2, z);
-      const e = edgeLines(geo, edgeCol);
+      const e = edgeLines(geo, edge);
       e.position.copy(m.position);
       g.add(m, e);
       this.obstacles.push({ x0: x - w / 2, x1: x + w / 2, z0: z - d / 2, z1: z + d / 2 });
@@ -136,7 +138,7 @@ export class Room {
 
     // outer walls (not in `obstacles`; the room bounds handle them)
     for (const [x, z, w, d] of [[0, -hh, hw * 2 + 1, 1], [0, hh, hw * 2 + 1, 1], [-hw, 0, 1, hh * 2 + 1], [hw, 0, 1, hh * 2 + 1]]) {
-      block(x, z, w, d, 1.6);
+      block(x, z, w, d, 1.6, wallEdgeCol);
       this.obstacles.pop();
     }
 
