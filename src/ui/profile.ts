@@ -1,3 +1,5 @@
+import { TEST, storageKey } from '../core/testMode';
+import { MAX_DEPTH } from '../data/depth';
 import type { MechId, TalentId } from '../data/meta';
 
 // Persistent player profile (localStorage): crystals, unlocks, talents and daily bests.
@@ -14,6 +16,7 @@ export interface Profile {
   codex: Record<CodexKind, string[]>;  // ids discovered
   history: RunRecord[];                // most recent first
   totals: { runs: number; kills: number; time: number };
+  maxEpoch?: number;   // deepest abyss epoch reached (sector 150 = 1)
 }
 
 export type CodexKind = 'enemies' | 'weapons' | 'upgrades';
@@ -31,8 +34,8 @@ export interface RunRecord {
   time: number;       // seconds
 }
 
-const KEY = 'neonrift.profile';
-const DEFAULT: Profile = { crystals: 0, mechs: ['vanguard'], selected: 'vanguard', talents: {}, daily: null, depth: 0, maxDepth: 0, wins: 0, seen: [], codex: { enemies: [], weapons: [], upgrades: [] }, history: [], totals: { runs: 0, kills: 0, time: 0 } };
+const KEY = storageKey('neonrift.profile');
+const DEFAULT: Profile = { crystals: TEST ? 99999 : 0, mechs: TEST ? ['vanguard', 'bastion', 'phantom'] : ['vanguard'], selected: 'vanguard', talents: {}, daily: null, depth: 0, maxDepth: TEST ? MAX_DEPTH : 0, wins: 0, seen: [], codex: { enemies: [], weapons: [], upgrades: [] }, history: [], totals: { runs: 0, kills: 0, time: 0 } };
 
 export function loadProfile(): Profile {
   try {

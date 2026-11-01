@@ -6,11 +6,14 @@ import { Input } from '../core/input';
 import { duck, setMood, setMusicVolume } from '../core/music';
 import { seedFromString, seedRun, todayKey } from '../core/rng';
 import { BALANCE } from '../data/balance';
-import { DEPTH_CRYSTAL_BONUS, DEPTH_DESC, MODS, VICTORY_CRYSTALS, setDepth } from '../data/depth';
+import { DEPTH_CRYSTAL_BONUS, DEPTH_DESC, FINAL_SECTOR, MODS, VICTORY_CRYSTALS, setDepth } from '../data/depth';
+import { TEST, TEST_SECTOR } from '../core/testMode';
+import type { BossLogEntry } from '../data/bossPlan';
 import type { RoomKind } from '../data/map';
-import { MECHS, crystalsFor } from '../data/meta';
+import { enemyDmgMul } from '../data/scaling';
+import { MECHS, crystalsFor, type MechDef } from '../data/meta';
 import { UPGRADES, type UpgradeDef } from '../data/upgrades';
-import { MAX_WEAPON_SLOTS } from '../data/weapons';
+import { MAX_WEAPON_SLOTS, WEAPONS } from '../data/weapons';
 import { Floaters } from '../ui/floaters';
 import { Hud } from '../ui/hud';
 import type { CodexKind } from '../ui/profile';
@@ -19,6 +22,16 @@ import { clearRun, saveRun, type RunSave } from '../ui/runsave';
 import { Screens } from '../ui/screens';
 import { loadSettings, saveSettings, type Settings } from '../ui/settings';
 import { loadBest } from '../ui/storage';
+import { Arsenal } from './arsenal';
+import { Ground } from './ground';
+import { Lasers } from './lasers';
+import { Portals } from './portals';
+import { X } from './partsEndless';
+import { enemyTimeScale } from './abyss';
+import { abyss, abyssLines, ambientDarkness, lawDark, lawDmgMul, lawLines, lawState, lawTick, rewardMul } from './abyss';
+import { currentFusions, resetFusions } from './fusion';
+import { applyBoon, type BoonId } from './epoch';
+import { AFFIXES } from '../data/affixes';
 import { Atmosphere } from './atmosphere';
 import { bindControls, placePadCrosshair } from './controls';
 import { Effects } from './effects';
@@ -35,7 +48,7 @@ import { Room } from './room';
 import { SectorFlow } from './sector';
 import { Tutorial } from './tutorial';
 
-export type GameState = 'title' | 'play' | 'paused' | 'upgrade' | 'portal' | 'transition' | 'dead' | 'won';
+export type GameState = 'title' | 'play' | 'paused' | 'upgrade' | 'portal' | 'hangar' | 'transition' | 'dead' | 'won';
 
 const tmp = new THREE.Vector3();
 
@@ -58,8 +71,11 @@ export class Game {
   daily = false;
   depth = 0;                     // rift depth of the current run
   endless = false;               // kept going after clearing the final sector
+  god = false;                   // test link: the player takes no damage
+  bossLog: BossLogEntry[] = [];  // bosses fought this run, for picking random and twin bosses
+  boons: BoonId[] = [];          // epoch boons taken this run
   private comboT = 0;
-  private crystalsAwarded = 0;   // crystals already paid out this run (at victory)
+  private crystalsAwarded = 0;   // crystals already paid out this run (on entering a shop, at victory)
   private runId = 0;
 
   readonly gfx = new Graphics();
@@ -77,6 +93,13 @@ export class Game {
   readonly interactables = new Interactables(this);
   readonly hazards = new Hazards(this);
   readonly perks = new Perks(this);
+  readonly arsenal = new Arsenal(this);
+  readonly ground = new Ground(this);
+  readonly lasers = new Lasers(this);
+  readonly portals = new Portals(this);
+  slippery = false;              // the whole floor is ice (abyss law)
+  darkness = 0;                  // 0..1 how dark the arena is around the player (light eaters, the eye, laws)
+  ambientDark = 0;               // darkness that doesn't come from light eaters (eye boss, abyss rules)
   readonly progress = new Progress();
   readonly sector = new SectorFlow(this);
   readonly menus = new Menus(this);
@@ -125,7 +148,7 @@ export class Game {
         this.time += dt;
         this.player.mesh.rotation.y = this.time * 0.6;
       }
-      const frozen = this.state === 'paused' || this.state === 'upgrade' || this.state === 'portal';
+      const frozen = this.state === 'paused' || this.state === 'upgrade' || this.state === 'portal' || this.state === 'hangar';
       if (!frozen) {
         this.fx.update(dt);
         this.room.updatePortal(dt, this.time);
@@ -154,6 +177,12 @@ export class Game {
     this.score = this.kills = this.coinsEarned = this.combo = this.bestCombo = this.bossKills = 0;
     this.comboT = this.runTime = 0;
     this.runId = Date.now();
+    this.bossLog = save?.bosses ?? [];
+    abyss.mutations = [...(save?.mutations ?? [])];
+    lawState.law = save?.law ?? null;
+    lawState.t = 0;
+    resetFusions(save?.fusions ?? []);
+    this.boons = [];
     if (save) {
       for (const id of save.upgrades) {
         const u = UPGRADES.find(x => x.id === id);
@@ -164,6 +193,8 @@ export class Game {
       p.coins = save.coins;
       p.revives = save.revives;
       p.restoreSlots(save.slots, save.weapon);
+      for (const b of save.boons ?? []) { this.boons.push(b); applyBoon(this, b); }
+      p.hp = Math.min(save.hp, p.maxHp);
       this.score = save.score;
       this.kills = save.kills;
       this.coinsEarned = save.coinsEarned;
@@ -184,7 +215,9 @@ export class Game {
       this.hud.toast(t('继续 · 扇区 {n}', { n: String(save.room).padStart(2, '0') }));
     } else {
       seedRun(daily ? seedFromString(`neon-rift:${todayKey()}`) : undefined);
-      this.sector.enter(1, 'combat');
+      const first = TEST && !daily ? TEST_SECTOR : 1;  // test link can start deeper (`&sector=N`)
+      this.endless = first > FINAL_SECTOR;
+      this.sector.enter(first, 'combat');
     }
     this.state = 'play';
   }
@@ -197,7 +230,8 @@ export class Game {
       score: this.score, kills: this.kills, coinsEarned: this.coinsEarned, bestCombo: this.bestCombo,
       bossKills: this.bossKills, crystalsAwarded: this.crystalsAwarded, playTime: this.runTime,
       mech: p.mechDef.id, hp: p.hp, coins: p.coins, revives: p.revives,
-      slots: p.slots, weapon: p.weapon, upgrades: [...p.taken],
+      slots: p.slots, weapon: p.weapon, upgrades: [...p.taken], bosses: this.bossLog, mutations: [...abyss.mutations],
+      law: lawState.law, fusions: currentFusions(), boons: [...this.boons],
     });
   }
 
@@ -210,6 +244,10 @@ export class Game {
     this.interactables.clear();
     this.hazards.clear();
     this.perks.clear();
+    this.arsenal.clear();
+    this.ground.clear();
+    this.lasers.clear();
+    this.portals.clear();
   }
 
   setPaused(paused: boolean): void {
@@ -217,21 +255,21 @@ export class Game {
     this.input.mouseDown = false;
     this.input.releaseTouch();
     duck(paused);
-    if (paused) this.screens.showPause(statLines(this.player), buildEntries(this.player));
+    if (paused) this.screens.showPause([...statLines(this.player), ...abyssLines(), ...lawLines()], buildEntries(this.player));
     else this.screens.toggle('pauseScreen', false);
     this.screens.setCrosshair(!paused);
   }
 
   // Continuous damage (acid) that ignores invulnerability frames and doesn't grant any.
   drainPlayer(amount: number): void {
-    if (this.state !== 'play') return;
-    this.player.hp -= amount * MODS.enemyDmg;
+    if (this.state !== 'play' || this.god) return;
+    this.player.hp -= amount * MODS.enemyDmg * enemyDmgMul(this.room.n);
     if (this.player.hp <= 0) this.onLethal();
   }
 
   damagePlayer(dmg: number, from: THREE.Vector3 | null): void {
     const p = this.player;
-    if (p.invuln > 0 || this.state !== 'play') return;
+    if (p.invuln > 0 || this.state !== 'play' || this.god) return;
     if (p.shield > 0) {
       p.shield--;
       p.invuln = 0.6;
@@ -241,7 +279,7 @@ export class Game {
       this.hud.toast(t('护盾抵挡'));
       return;
     }
-    p.hp -= dmg * MODS.enemyDmg;
+    p.hp -= dmg * MODS.enemyDmg * enemyDmgMul(this.room.n) * lawDmgMul();
     p.invuln = BALANCE.player.hurtInvuln;
     this.combo = 0;
     this.fx.shake(0.55);
@@ -264,6 +302,8 @@ export class Game {
     this.bestCombo = Math.max(this.bestCombo, this.combo);
     if (e.def.boss) this.bossKills++;
     this.perks.onKill(e);
+    if (!this.enemies.purging) this.arsenal.onKill(e);
+    if (e.noLoot) return;  // replicator copies and split-offs
     if (!e.def.boss && !this.enemies.purging) this.interactables.rollKillDrop(e.pos.x, e.pos.z, e.def.cost, e.elite);
     const reward = e.elite ? BALANCE.elites.reward : 1;
     this.score += Math.round(e.def.score * reward * (1 + Math.min(C.maxBonus, this.combo * C.scorePerKill)));
@@ -290,7 +330,10 @@ export class Game {
   }
 
   switchWeapon(i: number): void {
-    if (this.player.setWeapon(i)) this.refreshWeapons();
+    if (this.player.setWeapon(i)) {
+      this.arsenal.clearLocks();
+      this.refreshWeapons();
+    }
   }
 
   // Final sector cleared: pay out, unlock the next depth, and offer to keep going (endless).
@@ -303,8 +346,8 @@ export class Game {
     this.hud.prompt(null);
     const pr = this.progress;
     const crystals = this.runCrystals() + VICTORY_CRYSTALS;
-    this.crystalsAwarded = crystals - VICTORY_CRYSTALS;
-    pr.profile.crystals += crystals;
+    this.bankCrystals();
+    pr.profile.crystals += VICTORY_CRYSTALS;
     pr.profile.wins++;
     this.recordRun(true);
     const unlocked = this.daily ? null : pr.unlockAfterWin(this.depth);
@@ -320,18 +363,24 @@ export class Game {
   }
 
   private update(dt: number): void {
+    this.ambientDark = ambientDarkness() + lawDark();  // raised again below by whatever is darkening the arena this frame
+    lawTick(this, dt);
     this.time += dt;
     this.runTime += dt;
     this.room.time += dt;
     const coinsBefore = this.player.coins;
     this.player.update(dt, this);
     this.sector.spawnDue();
-    this.enemies.update(dt);
+    this.enemies.update(dt * enemyTimeScale());
     this.projectiles.update(dt);
     this.pickups.update(dt);
     this.interactables.update(dt);
     this.hazards.update(dt);
     this.perks.update(dt);
+    this.arsenal.update(dt);
+    this.ground.update(dt);
+    this.lasers.update(dt);
+    this.portals.update(dt);
     this.tutorial.update(dt);
     setMood(this.enemies.boss ? 'boss' : this.room.cleared ? 'calm' : 'combat');
     this.sector.update(dt);
@@ -342,7 +391,23 @@ export class Game {
       if (this.comboT <= 0) this.combo = 0;
     }
 
-    const boss = this.enemies.boss, p = this.player;
+    const bosses = this.enemies.bosses, p = this.player;
+    const tags: { x: number; y: number; key: string; html: string }[] = [];
+    for (const e of this.enemies.list) {
+      if (!e.affixes.length || !e.mesh.visible) continue;
+      const at = tmp.set(e.pos.x, e.def.y + e.r * 1.6 + 0.4, e.pos.z).project(this.gfx.camera);
+      const key = e.affixes.join();
+      tags.push({
+        x: (at.x + 1) / 2 * innerWidth, y: (1 - at.y) / 2 * innerHeight, key,
+        html: e.affixes.map(a => `<i style="color:#${AFFIXES[a].color.toString(16).padStart(6, '0')}">${AFFIXES[a].name}</i>`).join(''),
+      });
+    }
+    this.hud.tags(tags);
+    // darkness: standing in a light eater's aura (the eye boss and abyss rules add their own)
+    const inShade = this.enemies.list.some(e => e.def.parts?.special === 'darkAura' && e.hp > 0 && Math.hypot(e.pos.x - p.pos.x, e.pos.z - p.pos.z) < X.darkR * (e.variant ? 0.6 + 0.4 * e.charge : 1));
+    this.darkness += ((inShade ? 0.6 : 0) + this.ambientDark - this.darkness) * Math.min(1, dt * 4);
+    const ps = tmp.set(p.pos.x, 1, p.pos.z).project(this.gfx.camera);
+    this.hud.darkness(this.darkness, (ps.x + 1) / 2 * innerWidth, (1 - ps.y) / 2 * innerHeight);
     // gauge sits on the ground just in front of (below, on screen) the mech's feet
     const sp = tmp.set(p.pos.x, 0, p.pos.z + 1.2).project(this.gfx.camera);
     this.hud.mechGauge((sp.x + 1) / 2 * innerWidth, (1 - sp.y) / 2 * innerHeight, {
@@ -357,9 +422,13 @@ export class Game {
       skillCd: Math.max(0, p.skillCd),
       skillTotal: p.mechDef.skillCd,
       skillActive: p.skillT > 0,
-      reload: p.reloadProgress,
+      ring: p.reloadProgress !== null ? { p: p.reloadProgress, kind: 'reload' }
+        : p.charge > 0 ? { p: p.charge / p.chargeTime, kind: 'charge' }
+        : p.locks.length > 0 ? { p: p.locks.length / Math.max(1, p.maxLocks), kind: 'charge' }
+        : p.heat > 0 ? { p: p.heat, kind: 'heat' } : null,
       slots: p.slots,
-      magSize: s => p.magSize(s.id),
+      magSize: s => p.magSize(s.id, s.level),
+      pulse: p.pulseRhythm,
       statuses: statusIcons(p),
       room: this.room.n,
       roomLabel: this.room.label,
@@ -367,7 +436,7 @@ export class Game {
       coins: this.player.coins,
       combo: this.combo,
       comboLeft: this.comboT / BALANCE.combo.window,
-      bossHp: boss ? boss.hp / boss.maxHp : null,
+      bossHp: bosses.length ? bosses.reduce((s, b) => s + Math.max(0, b.hp), 0) / bosses.reduce((s, b) => s + b.maxHp, 0) : null,
     });
   }
 
@@ -399,8 +468,8 @@ export class Game {
     this.fx.shake(1.2);
     const pr = this.progress;
     const isNewBest = pr.recordBest(this.room.n, this.score);
-    const crystals = this.runCrystals() - this.crystalsAwarded;
-    pr.profile.crystals += crystals;
+    const crystals = this.runCrystals();  // shown as the run's total; only the part not banked yet is paid now
+    this.bankCrystals();
     this.recordRun(false);
     if (this.daily) pr.recordDaily(this.score);
     pr.save();
@@ -411,10 +480,55 @@ export class Game {
     setTimeout(() => this.screens.showGameOver(summary), 900);
   }
 
+  // Pay out the crystals earned so far that haven't been paid yet (so the hangar terminal can spend them).
+  bankCrystals(): void {
+    const due = this.runCrystals() - this.crystalsAwarded;
+    if (due <= 0) return;
+    this.progress.profile.crystals += due;
+    this.crystalsAwarded += due;
+    this.progress.save();
+  }
+
+  // Rebuild the player mid-run after a mech switch or a talent bought at the hangar terminal: a fresh
+  // mech with the current talents, then modules, weapons and boons replayed the way a run save restores
+  // them. Switching mechs swaps the starter weapon (keeping its level) and keeps the HP fraction.
+  rebuildPlayer(mech: MechDef): void {
+    const p = this.player, prev = p.mechDef;
+    const hp = p.hp, maxHp = p.maxHp, coins = p.coins, revives = p.revives, shield = p.shield;
+    const pos = p.pos.clone(), aim = p.aim.clone(), taken = [...p.taken];
+    let slots = p.slots.map(s => ({ ...s })), weapon = p.weapon;
+    p.reset(mech, this.progress.profile.talents);
+    for (const id of taken) {
+      const u = UPGRADES.find(x => x.id === id);
+      if (u) p.addUpgrade(u);
+    }
+    if (mech !== prev) {
+      const [old, ...rest] = slots;
+      const dup = rest.find(s => s.id === mech.starter);
+      const others = rest.filter(s => s !== dup);
+      const level = Math.max(old.level, dup?.level ?? 1);
+      slots = [{ id: mech.starter, level, mag: p.magSize(mech.starter, level), reserve: 0 }, ...others];
+      // the old starter stays as a regular weapon if there's room
+      if (slots.length < MAX_WEAPON_SLOTS) slots.push({ id: old.id, level: old.level, mag: old.mag, reserve: WEAPONS[old.id].reserve });
+      weapon = 0;
+    }
+    p.restoreSlots(slots, weapon);
+    for (const b of this.boons) applyBoon(this, b);
+    p.hp = mech !== prev ? Math.max(1, Math.round(hp / maxHp * p.maxHp)) : Math.max(1, Math.min(p.maxHp, hp + p.maxHp - maxHp));
+    p.coins = coins;
+    p.revives = revives;
+    p.shield = mech !== prev ? p.shieldMax : Math.min(shield, p.shieldMax);
+    p.pos.copy(pos);
+    p.aim.copy(aim);
+    this.hud.setSkill(mech.skill, mech.skillName);
+    this.hud.setModules(buildEntries(p));
+    this.refreshWeapons();
+  }
+
   // Crystals earned by the run so far, including the depth bonus.
   private runCrystals(): number {
     const base = crystalsFor({ score: this.score, room: this.room.n, bosses: this.bossKills });
-    return Math.floor(base * (1 + this.depth * DEPTH_CRYSTAL_BONUS));
+    return Math.floor(base * (1 + this.depth * DEPTH_CRYSTAL_BONUS) * rewardMul());
   }
 
   private recordRun(won: boolean): void {

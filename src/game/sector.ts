@@ -6,7 +6,14 @@ import { BALANCE } from '../data/balance';
 import { FINAL_SECTOR } from '../data/depth';
 import { ENEMIES } from '../data/enemies';
 import { ROOM_INFO, rollPaths, type RoomKind } from '../data/map';
-import { ROLL_WEIGHTS, rollUpgrades, type UpgradeDef } from '../data/upgrades';
+import { THEMES } from '../data/themes';
+import { planBoss } from '../data/bossPlan';
+import { LAWS, MUTATIONS, addMutation, lawFor, lawSetup, lawState, mutationDue, offerMutations } from './abyss';
+import { fusionsFor } from './fusion';
+import { endlessRewards } from './epoch';
+import { stratumAt } from '../data/strata';
+import { AFFIXES } from '../data/affixes';
+import { ROLL_WEIGHTS, rollUpgrades, type Rarity, type UpgradeDef } from '../data/upgrades';
 import type { Tag } from '../ui/floaters';
 import type { Game } from './game';
 
@@ -17,7 +24,9 @@ export class SectorFlow {
   private challengeSpawnT = 0;
   private choices: UpgradeDef[] = [];
   private pendingPortal: RoomKind | null = null;
-  private portalArmed = true;  // false after cancelling, until the player steps off the portal
+  private portalArmed = true;
+  private twinSlot = 0;
+  private custom: { n: number; onPick: (i: number) => void } | null = null;  // false after cancelling, until the player steps off the portal
 
   constructor(private readonly g: Game) {}
 
@@ -30,7 +39,17 @@ export class SectorFlow {
     g.room.build(n, kind);
     g.atmosphere.build(g.room);
     g.hazards.build();
+    // deep abyss: a law per 5 sectors, two new fusions every 5
+    const law = lawFor(n, rnd);
+    if (law !== lawState.law) { lawState.law = law; if (law) g.hud.toast(t('深渊法则：{l} · {d}', { l: LAWS[law].name, d: LAWS[law].desc })); }
+    const fused = fusionsFor(n, rnd);
+    if (fused.length) g.hud.toast(t('新融合体：{f}', { f: fused.map(k => ENEMIES[k].name).join(t('、')) }));
+    if (kind === 'boss') {
+      g.room.bossPlan = planBoss(n, g.bossLog, rnd);
+      g.bossLog = [...g.bossLog.filter(b => b.n < n), ...g.room.bossPlan.kinds.map(k => ({ n, kind: k }))];
+    }
     g.room.plan();
+    lawSetup(g);
     g.player.pos.copy(g.room.entry);
     g.player.vel.set(0, 0, 0);
     g.player.shield = g.player.shieldMax;
@@ -38,6 +57,7 @@ export class SectorFlow {
 
     this.challengeSpawnT = 1;
     if (kind === 'shop') {
+      g.bankCrystals();  // before the run save below, so a resumed run doesn't pay them twice
       g.interactables.setupShop();
       this.openPaths();
       g.hud.toast(t('黑市终端 · 走近按 E 交易'));
@@ -48,7 +68,15 @@ export class SectorFlow {
     } else if (kind === 'boss') {
       g.hud.toast(t('⚠ 裂隙核心'));
     } else {
-      g.hud.toast(kind === 'combat' ? t('扇区 {n}', { n: String(n).padStart(2, '0') }) : ROOM_INFO[kind].name);
+      const theme = g.room.enemyTheme;
+      const label = kind === 'combat' ? t('扇区 {n}', { n: String(n).padStart(2, '0') }) : ROOM_INFO[kind].name;
+      g.hud.toast(theme ? `${label} · ${THEMES[theme].name}` : label);
+    }
+    // entering a new rift stratum: name it and what's new in it
+    const st = stratumAt(n);
+    if (st && n === st.from) {
+      const names = st.enemies.map(k => ENEMIES[k].name).join(t('、'));
+      g.hud.toast(t('进入{s} · 新敌人：{e} · 新词缀：{a}', { s: st.name, e: names, a: AFFIXES[st.affix].name }));
     }
     g.saveRunState(seed, n, kind);
   }
@@ -62,10 +90,17 @@ export class SectorFlow {
   spawnDue(): void {
     const g = this.g;
     for (const s of g.room.takeDueSpawns()) {
+      // bosses step out at the far side; twins side by side
+      const twin = ENEMIES[s.kind].boss && (s.hpMul ?? 1) < 1 ? (this.twinSlot++ % 2 ? 6 : -6) : 0;
       const [x, z] = ENEMIES[s.kind].boss
-        ? [0, -g.room.hh * 0.45]
+        ? [twin, -g.room.hh * 0.45]
         : g.room.findSpawn(g.player.pos, BALANCE.rooms.spawnMinDist, ENEMIES[s.kind].r);
-      g.enemies.addMarker(s.kind, x, z, ENEMIES[s.kind].boss ? 1.5 : 0.75, s.count, s.elite);
+      if (s.kind === 'mimic') {
+        // mimics don't come through a rift: they're just lying there, looking like a health orb
+        g.enemies.spawn('mimic', x, z, s.elite);
+        continue;
+      }
+      g.enemies.addMarker(s.kind, x, z, ENEMIES[s.kind].boss ? 1.5 : 0.75, s.count, s.elite, s.hpMul);
     }
   }
 
@@ -117,6 +152,17 @@ export class SectorFlow {
 
   pickUpgrade(i: number): void {
     const g = this.g;
+    if (this.custom) {
+      if (g.state !== 'upgrade' || i < 0 || i >= this.custom.n) return;
+      const pick = this.custom.onPick;
+      this.custom = null;
+      duck(false);
+      g.screens.toggle('upgradeScreen', false);
+      g.screens.setCrosshair(true);
+      g.state = 'play';
+      pick(i);
+      return;
+    }
     const u = this.choices[i];
     if (!u || g.state !== 'upgrade') return;
     g.applyUpgrade(u);
@@ -130,7 +176,8 @@ export class SectorFlow {
   private checkClear(dt: number): void {
     const g = this.g, room = g.room;
     const waveSpawned = room.queue.length === 0 && g.enemies.pending === 0;
-    const alive = g.enemies.list.length;
+    // walls, missiles and still-disguised mimics don't hold up the clear
+    const alive = g.enemies.list.filter(e => !e.def.inert && e.state !== 'disguise').length;
     // next wave once the current one is mostly dead
     if (!room.cleared && waveSpawned && room.hasMoreWaves && alive <= Math.max(2, Math.floor(room.waveSize * BALANCE.rooms.nextWaveAt))) {
       room.startWave(room.wave + 1);
@@ -139,6 +186,7 @@ export class SectorFlow {
     if (!room.cleared && waveSpawned && !room.hasMoreWaves && alive === 0 && g.hazards.openRifts === 0) {
       room.cleared = true;
       room.clearT = 0.9;
+      for (const e of g.enemies.list.filter(e => e.def.inert || e.state === 'disguise')) { e.noLoot = true; g.enemies.kill(e); }
       g.hud.toast(t('扇区已净化'));
       sfx.clear();
       g.projectiles.clearEnemyBullets();
@@ -150,7 +198,7 @@ export class SectorFlow {
       room.clearT -= dt;
       if (room.clearT <= 0) {
         if (room.isBoss && room.n === FINAL_SECTOR && !g.endless) g.victory();
-        else this.openUpgrade();
+        else this.afterClear();
       }
     }
   }
@@ -179,8 +227,33 @@ export class SectorFlow {
     }
     if (room.clearT > 0) {
       room.clearT -= dt;
-      if (room.clearT <= 0) this.openUpgrade();
+      if (room.clearT <= 0) this.afterClear();
     }
+  }
+
+  // Between clearing a sector and the module pick: abyss mutations (and epoch rewards) come first.
+  private afterClear(): void {
+    const g = this.g, n = g.room.n;
+    if (endlessRewards(g, n, () => this.openUpgrade())) return;
+    if (!mutationDue(n)) { this.openUpgrade(); return; }
+    const offer = offerMutations();
+    this.openChoice(t('深渊异变 · 选择一个（之后一直生效）'), offer.map(m => ({ name: MUTATIONS[m].name, desc: MUTATIONS[m].desc, rarity: 'legendary' as const })), i => {
+      addMutation(offer[i]);
+      g.hud.toast(t('异变生效：{m}', { m: MUTATIONS[offer[i]].name }));
+      this.openUpgrade();
+    });
+  }
+
+  // A choice screen that isn't a module pick (mutations, abyss boons): same cards, custom outcome.
+  openChoice(title: string, cards: { name: string; desc: string; rarity: Rarity }[], onPick: (i: number) => void): void {
+    const g = this.g;
+    g.state = 'upgrade';
+    g.input.mouseDown = false;
+    g.input.releaseTouch();
+    g.hud.prompt(null);
+    duck(true);
+    this.custom = { n: cards.length, onPick };
+    g.screens.showUpgrades(cards as unknown as UpgradeDef[], title, i => this.pickUpgrade(i));
   }
 
   // Open the exit portals: one per offered next sector, each with a floating label.

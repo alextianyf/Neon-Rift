@@ -3,9 +3,13 @@ import { disposeTree, markShared } from '../core/assets';
 import { clamp } from '../core/math';
 import { rnd, rrand } from '../core/rng';
 import { BALANCE } from '../data/balance';
-import { ENEMIES, SPAWN_TABLE, bossFor, type EnemyKind } from '../data/enemies';
+import { ENEMIES, type EnemyKind } from '../data/enemies';
+import type { BossPlan } from '../data/bossPlan';
+import { eliteCapPlus, lawBudgetMul, packBonus, spawnWeightMul } from './abyss';
+import { THEMES, buildRoster, rollTheme, type RosterEntry, type ThemeId } from '../data/themes';
 import { CHALLENGE_TIME, ROOM_INFO, type RoomKind } from '../data/map';
 import { MODS } from '../data/depth';
+import { eliteCapBonus } from '../data/scaling';
 import { t } from '../core/i18n';
 
 export interface AABB {
@@ -14,6 +18,7 @@ export interface AABB {
   z0: number;
   z1: number;
   low?: boolean;  // pits: block movement but not shots
+  block?: object; // a wall block an enemy raised (removed with it)
 }
 
 export interface SpawnEntry {
@@ -21,6 +26,7 @@ export interface SpawnEntry {
   delay: number;   // seconds after the wave starts
   count: number;   // enemies released by this rift (swarms come in packs)
   elite: boolean;
+  hpMul?: number;  // twin bosses come in weaker
 }
 
 export type { RoomKind };
@@ -83,6 +89,9 @@ export class Room {
   readonly hub = new THREE.Vector3();      // free spot for the exit portal
   readonly lootSpot = new THREE.Vector3(); // free spot for the weapon drop
   kind: RoomKind = 'combat';
+  enemyTheme: ThemeId | null = null;
+  bossPlan: BossPlan | null = null;    // boss sectors: set before plan()  // combat sectors: which enemies dominate (see data/themes.ts)
+  private roster: RosterEntry[] = [];
   challengeT = 0;       // challenge sectors: seconds of survival left
   readonly portals: Portal[] = [];
   private group: THREE.Group | null = null;
@@ -98,7 +107,7 @@ export class Room {
   }
 
   get label(): string {
-    const name = ROOM_INFO[this.kind].name;
+    const name = this.enemyTheme ? THEMES[this.enemyTheme].name : ROOM_INFO[this.kind].name;
     if (this.kind === 'challenge' && !this.cleared) return `${name} · ${t('剩余 {n}s', { n: Math.ceil(Math.max(0, this.challengeT)) })}`;
     if (this.waves.length > 1 && !this.cleared) return `${name} · ${t('波次 {a}/{b}', { a: Math.min(this.wave + 1, this.waves.length), b: this.waves.length })}`;
     return name;
@@ -218,12 +227,16 @@ export class Room {
     const n = this.n, R = BALANCE.rooms;
     this.waves = [];
     this.challengeT = this.kind === 'challenge' ? CHALLENGE_TIME : 0;
+    this.enemyTheme = this.kind === 'combat' ? rollTheme(n, rnd) : null;
+    this.roster = buildRoster(n, this.enemyTheme, this.kind === 'elite', rnd);
     if (this.kind === 'boss') {
-      this.waves = [[{ kind: bossFor(n), delay: 1.2, count: 1, elite: false }, { kind: 'grunt', delay: 2, count: 3, elite: false }]];
+      const b = this.bossPlan ?? { kinds: ['boss'] as EnemyKind[], hpMul: 1 };
+      this.waves = [[...b.kinds.map(kind => ({ kind, delay: 1.2, count: 1, elite: false, hpMul: b.hpMul })), { kind: 'grunt', delay: 2, count: 3, elite: false }]];
     } else if (this.kind === 'combat' || this.kind === 'elite') {
       const elite = this.kind === 'elite';
       const area = clamp((this.hw * this.hh) / (18 * 12), 0.6, 1.6);
-      const total = (R.budgetBase + n * R.budgetPerRoom) * area * (elite ? 0.8 : 1);
+      const perRoom = Math.min(n, R.budgetSlowFrom) * R.budgetPerRoom + Math.max(0, n - R.budgetSlowFrom) * R.budgetPerRoomSlow;
+      const total = (R.budgetBase + perRoom) * area * (elite ? 0.8 : 1) * lawBudgetMul();
       const waveCount = elite ? 2 : this.size === 'small' ? 2 : this.size === 'large' ? 3 : n >= 6 ? 3 : 2;
       for (let w = 0; w < waveCount; w++) {
         // later waves are a bit heavier
@@ -248,12 +261,13 @@ export class Room {
   // One random spawn for this sector depth. Elite sectors skip swarm packs and make everything elite.
   rollSpawn(eliteRoom = false): Omit<SpawnEntry, 'delay'> {
     const n = this.n, E = BALANCE.elites;
-    const pool = SPAWN_TABLE.filter(s => n >= s.from && !(eliteRoom && s.pack));
-    let r = rnd() * pool.reduce((sum, s) => sum + s.weight, 0);
-    const s = pool.find(p => (r -= p.weight) <= 0) ?? pool[0];
-    const count = s.pack ? s.pack[0] + Math.floor(rnd() * (s.pack[1] - s.pack[0] + 1)) : 1;
+    const pool = this.roster.filter(s => !(eliteRoom && s.pack));
+    const w = (s: RosterEntry) => s.weight * spawnWeightMul(s.kind);
+    let r = rnd() * pool.reduce((sum, s) => sum + w(s), 0);
+    const s = pool.find(p => (r -= w(p)) <= 0) ?? pool[0];
+    const count = s.pack ? s.pack[0] + Math.floor(rnd() * (s.pack[1] - s.pack[0] + 1)) + packBonus() : 1;
     const fromRoom = MODS.eliteBonus > 0 ? 2 : E.fromRoom;
-    const eliteChance = n >= fromRoom ? Math.min(E.maxChance + MODS.eliteBonus, E.chance + MODS.eliteBonus + Math.max(0, n - E.fromRoom) * E.chancePerRoom) : 0;
+    const eliteChance = n >= fromRoom ? Math.min(E.maxChance + MODS.eliteBonus + eliteCapBonus(n) + eliteCapPlus(), E.chance + MODS.eliteBonus + Math.max(0, n - E.fromRoom) * E.chancePerRoom) : 0;
     const elite = !s.pack && (eliteRoom || rnd() < eliteChance);
     return { kind: s.kind, count, elite };
   }
@@ -274,6 +288,23 @@ export class Room {
     const due: SpawnEntry[] = [];
     while (this.queue.length && this.queue[0].delay <= this.time) due.push(this.queue.shift()!);
     return due;
+  }
+
+  // Wall blocks raised by wall builders block movement (shots hit the block itself).
+  addBlock(b: { pos: { x: number; z: number }; r: number }): void {
+    const h = b.r * 0.9;
+    this.obstacles.push({ x0: b.pos.x - h, x1: b.pos.x + h, z0: b.pos.z - h, z1: b.pos.z + h, low: true, block: b });
+  }
+
+  moveBlock(b: { pos: { x: number; z: number }; r: number }): void {
+    const o = this.obstacles.find(o => o.block === b);
+    if (!o) return;
+    const h = b.r * 0.9;
+    Object.assign(o, { x0: b.pos.x - h, x1: b.pos.x + h, z0: b.pos.z - h, z1: b.pos.z + h });
+  }
+
+  removeBlock(b: object): void {
+    this.obstacles = this.obstacles.filter(o => o.block !== b);
   }
 
   // Movement blocking: walls, pillars and pits.

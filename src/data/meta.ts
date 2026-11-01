@@ -73,7 +73,8 @@ export const TALENTS: TalentDef[] = [
   { id: 'revive', name: t('复苏协议'), desc: l => (l ? t('每局可复活一次（50% 生命）') : t('解锁后每局可复活一次')), max: 1, cost: () => 120 },
 ];
 
-// Crystals awarded for a finished run.
+// Crystals awarded for a run (never fewer than MIN_RUN_CRYSTALS, so even a short run helps the talents along).
+export const MIN_RUN_CRYSTALS = 10;
 export function crystalsFor(run: { score: number; room: number; bosses: number }): number {
-  return Math.floor(run.score / 60) + run.room * 2 + run.bosses * 15;
+  return Math.max(MIN_RUN_CRYSTALS, Math.floor(run.score / 60) + run.room * 2 + run.bosses * 15);
 }

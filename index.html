@@ -7,8 +7,9 @@
 <link rel="icon" type="image/svg+xml" href="favicon.svg">
 </head>
 <body>
-<div id="cross" class="hidden"><i></i></div>
+<div id="cross" class="hidden"><i></i><b id="pips"></b></div>
 <div id="floaters"></div>
+<div id="dark"></div>
 <div id="vignette"></div>
 <div id="scan"></div>
 <div id="fade"><div class="warp"><span id="fadeText"></span></div></div>
@@ -31,6 +32,7 @@
     <div class="seg boss"><div id="bossFill"></div></div>
   </div>
   <div id="combo" class="hidden"><span class="lbl">COMBO</span><b id="comboN">0</b><span class="cn">连杀</span><div class="seg tiny"><div id="comboFill"></div></div></div>
+  <div id="tags"></div>
   <div id="mechGauge"><div class="gdash"><div></div></div><div class="gskill"><div class="bar"><div></div></div><span></span></div></div>
   <div id="prompt" class="hidden"></div>
   <div id="hotbar">
@@ -172,7 +174,7 @@
 <div id="hangarScreen" class="overlay hidden">
   <div class="kicker">HANGAR</div>
   <h2>机库</h2>
-  <div class="hangarbar">裂隙结晶：<b id="hangarCrystals" class="gold">0</b><span class="dim">每局结束按分数、扇区与击败的首领获得</span></div>
+  <div class="hangarbar">裂隙结晶：<b id="hangarCrystals" class="gold">0</b><span class="dim">按分数、扇区与击败的首领获得，局内在黑市的机库终端结算</span></div>
   <div class="hangargrid">
     <div class="panel wide"><h3>机体</h3><div id="mechList"></div></div>
     <div class="panel wide"><h3>永久天赋</h3><div id="talentList"></div></div>

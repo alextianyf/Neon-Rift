@@ -4,7 +4,9 @@ import '@fontsource/rajdhani/500.css';
 import '@fontsource/rajdhani/700.css';
 import './style.css';
 import { LANG, translateDom } from './core/i18n';
+import { TEST } from './core/testMode';
 import { Game } from './game/game';
+import { buildTestPanel } from './ui/testPanel';
 import { loadSettings, saveSettings } from './ui/settings';
 import { version } from '../package.json';
 
@@ -21,6 +23,10 @@ langBtn.addEventListener('click', () => {
 
 const game = new Game();
 game.run();
+if (TEST) {
+  buildTestPanel(game);
+  document.getElementById('version')!.textContent += ' · TEST';
+}
 
 // Dev builds only: inspect or poke the running game from the browser console via `window.game`.
 if (import.meta.env.DEV) (window as unknown as { game: Game }).game = game;

@@ -4,7 +4,7 @@ import { sfx } from '../core/audio';
 import { shuffledR } from '../core/rng';
 import { BALANCE } from '../data/balance';
 import { RARITY_LABEL, RARITY_PRICE, ROLL_WEIGHTS, rollUpgrades, type UpgradeDef } from '../data/upgrades';
-import { WEAPONS, type WeaponId } from '../data/weapons';
+import { MAX_WEAPON_LEVEL, WEAPONS, type WeaponId } from '../data/weapons';
 import type { Tag } from '../ui/floaters';
 import type { Game } from './game';
 import { MODS } from '../data/depth';
@@ -14,7 +14,8 @@ export type Offer =
   | { kind: 'weapon'; id: WeaponId; level: number; ammo?: { mag: number; reserve: number } }  // ammo: a dropped weapon keeps its rounds
   | { kind: 'upgrade'; upgrade: UpgradeDef }
   | { kind: 'heal'; amount: number }
-  | { kind: 'ammo' };
+  | { kind: 'ammo' }
+  | { kind: 'hangar' };  // terminal in every shop: talents and mechs, bought with rift crystals
 
 interface Item {
   offer: Offer;
@@ -34,6 +35,7 @@ function offerColor(o: Offer): number {
   if (o.kind === 'weapon') return WEAPONS[o.id].color;
   if (o.kind === 'upgrade') return RARITY_COLOR[o.upgrade.rarity];
   if (o.kind === 'ammo') return 0xffd23f;
+  if (o.kind === 'hangar') return 0x4ff0ff;
   return 0x55ff99;
 }
 
@@ -41,6 +43,7 @@ function offerName(o: Offer): string {
   if (o.kind === 'weapon') return WEAPONS[o.id].name + (o.level > 1 ? ` Lv.${o.level}` : '');
   if (o.kind === 'upgrade') return o.upgrade.name;
   if (o.kind === 'ammo') return t('弹药补给');
+  if (o.kind === 'hangar') return t('机库终端');
   return t('维修包');
 }
 
@@ -48,11 +51,13 @@ function offerDesc(o: Offer): string {
   if (o.kind === 'weapon') return WEAPONS[o.id].desc;
   if (o.kind === 'upgrade') return `${RARITY_LABEL[o.upgrade.rarity]} · ${o.upgrade.desc}`;
   if (o.kind === 'ammo') return t('补满所有拾取武器的备用弹药');
+  if (o.kind === 'hangar') return t('用裂隙结晶升级天赋、解锁或更换机体，永久生效，并立刻用在这一局');
   return t('回复 {n} 生命', { n: o.amount });
 }
 
 // Things the player walks up to and presses E on: weapon drops and shop items.
 const KD = BALANCE.killDrops;
+const MAXED_WEAPON_COINS = 10;
 
 // Weighted pick with Math.random (combat loot must not touch the seeded run RNG).
 function pickWeighted<T>(entries: [T, number][]): T {
@@ -108,6 +113,15 @@ export class Interactables {
         rounds.add(r);
       }
       icon = rounds;
+    } else if (offer.kind === 'hangar') {
+      // a small console: a tilted screen on a post
+      const term = new THREE.Group();
+      const post = new THREE.Mesh(new THREE.BoxGeometry(0.25, 0.8, 0.25), new THREE.MeshStandardMaterial({ color: 0x15131f, roughness: 0.6 }));
+      post.position.y = -0.5;
+      const screen = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.55, 0.06), glowMat(color, 1.6));
+      screen.rotation.x = -0.5;
+      term.add(post, screen);
+      icon = term;
     } else {
       const cross = new THREE.Group();
       const mat = glowMat(color, 2.2);
@@ -164,6 +178,7 @@ export class Interactables {
     if (upgrade) this.spawn({ kind: 'upgrade', upgrade }, 2, z, Math.round(RARITY_PRICE[upgrade.rarity] * scale));
     this.spawn({ kind: 'heal', amount: BALANCE.shop.healAmount }, 6, z, Math.round(BALANCE.shop.healPrice * scale));
     this.spawn({ kind: 'ammo' }, 0, z + 4, Math.round(BALANCE.shop.ammoPrice * scale));
+    this.spawn({ kind: 'hangar' }, 6, z + 4);
   }
 
   // Treasure vault: a free weapon, a free module and a pile of shards.
@@ -190,18 +205,27 @@ export class Interactables {
       return;
     }
     const o = best.offer;
-    let verb = best.price > 0 ? t('购买') : t('拾取');
+    let verb = o.kind === 'hangar' ? t('打开') : best.price > 0 ? t('购买') : t('拾取');
     if (o.kind === 'weapon') {
-      if (p.owns(o.id)) verb = best.price > 0 ? t('购买并升级') : t('升级');
+      if (p.owns(o.id)) verb = p.slots.find(s => s.id === o.id)!.level >= MAX_WEAPON_LEVEL ? t('补充弹药') : best.price > 0 ? t('购买并升级') : t('升级');
       else if (p.slots.length >= 3) verb = t('{verb}并替换 {w}', { verb, w: WEAPONS[p.slots[p.replaceIndex].id].name });
     }
     const cost = best.price > 0 ? ` · ${t('{n} 碎片', { n: best.price })}` : '';
-    this.g.hud.prompt(`<kbd>E</kbd> ${verb} <b>${offerName(o)}</b>${cost}<div class="pdesc">${offerDesc(o)}</div>`, best.price <= p.coins);
+    let desc = offerDesc(o);
+    if (o.kind === 'weapon') {
+      // tell the player what the next level unlocks
+      const owned = p.slots.find(s => s.id === o.id);
+      const next = owned ? owned.level + o.level : o.level;
+      const unlock = (owned ? owned.level < 3 : true) && next >= 3 ? 3 : (owned ? owned.level < 5 : true) && next >= 5 ? 5 : 0;
+      if (unlock) desc += `<br>Lv.${unlock}：${unlock === 3 ? WEAPONS[o.id].lv3 : WEAPONS[o.id].lv5}`;
+    }
+    this.g.hud.prompt(`<kbd>E</kbd> ${verb} <b>${offerName(o)}</b>${cost}<div class="pdesc">${desc}</div>`, best.price <= p.coins);
   }
 
   interact(): void {
     const it = this.focused, g = this.g, p = g.player;
     if (!it) return;
+    if (it.offer.kind === 'hangar') { g.menus.openRunHangar(); return; }
     if (it.price > p.coins) {
       sfx.denied();
       g.hud.toast(t('碎片不足'));
@@ -219,7 +243,17 @@ export class Interactables {
     const o = it.offer;
     if (o.kind === 'weapon') {
       const res = p.addWeapon(o.id, o.level, o.ammo);
-      if (res.kind === 'levelup') { sfx.levelUp(); g.hud.toast(t('{w} 升级到 Lv.{n}，弹药补满', { w: WEAPONS[o.id].name, n: res.level })); }
+      if (res.kind === 'levelup') {
+        sfx.levelUp();
+        const w = WEAPONS[o.id];
+        const unlocked = res.level === 3 ? w.lv3 : res.level === 5 ? w.lv5 : '';
+        g.hud.toast(unlocked ? `${w.name} Lv.${res.level}：${unlocked}` : t('{w} 升级到 Lv.{n}，弹药补满', { w: w.name, n: res.level }));
+      }
+      else if (res.kind === 'maxed') {
+        p.coins += MAXED_WEAPON_COINS;
+        sfx.pickup();
+        g.hud.toast(t('{w} 已满级：弹药补满，+{n} 碎片', { w: WEAPONS[o.id].name, n: MAXED_WEAPON_COINS }));
+      }
       else { sfx.pickup(); g.hud.toast(t('获得 {w}', { w: WEAPONS[o.id].name })); }
       if (res.kind === 'swapped') {
         const d = res.dropped;

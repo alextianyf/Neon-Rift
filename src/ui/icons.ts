@@ -12,6 +12,12 @@ const PATHS: Record<WeaponId, string> = {
   grenade: 'M12 4a5 5 0 1 0 0.01 0M12 1v3M15 2l-2 2',
   rocket: 'M2 8h13l5-4v8l-5-4M6 5v6',
   rail: 'M1 6h22M1 10h22M5 4v8M19 4v8',
+  disc: 'M12 8m-6 0a6 6 0 1 0 12 0a6 6 0 1 0 -12 0M12 8m-2 0a2 2 0 1 0 4 0a2 2 0 1 0 -4 0',
+  blade: 'M3 13L19 3l2 2L7 15zM3 13l-1 2 2-1',
+  prism: 'M4 13L12 2l8 11zM2 8h6M16 6l6-3M16 9l6 1M16 12l6 3',
+  spike: 'M2 8h14M16 5l6 3-6 3zM5 6v4M9 6v4',
+  swarm: 'M2 12l6-4M8 12l6-5M14 12l6-6M2 12h18',
+  singularity: 'M12 8m-2 0a2 2 0 1 0 4 0a2 2 0 1 0 -4 0M3 8c3-6 15-6 18 0M3 8c3 6 15 6 18 0',
 };
 
 // Hotbar glyphs (24x24): the dash and each mech skill.

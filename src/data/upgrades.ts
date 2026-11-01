@@ -31,11 +31,11 @@ export const ROLL_WEIGHTS: Record<'room' | 'boss' | 'shop' | 'challenge' | 'trea
 
 export const UPGRADES: UpgradeDef[] = [
   // common
-  { id: 'dmg', rarity: 'common', name: t('过载弹芯'), desc: t('伤害 +20%'), apply: p => { p.dmgMul *= 1.2; } },
+  { id: 'dmg', rarity: 'common', name: t('过载弹芯'), desc: t('伤害 +20%'), max: 5, apply: p => { p.dmgBonus += 0.2; }, available: p => p.dmgBonus < CAP.dmgBonus },
   { id: 'rate', rarity: 'common', name: t('急速扳机'), desc: t('射速 +15%'), apply: p => { p.rateMul *= 1.15; }, available: p => p.rateMul < CAP.fireRateMul },
   { id: 'reload', rarity: 'common', name: t('快速装填'), desc: t('装弹速度 +25%'), apply: p => { p.reloadMul *= 1.25; }, available: p => 1 / p.reloadMul > CAP.reloadTimeMul },
   { id: 'mag', rarity: 'common', name: t('扩容弹匣'), desc: t('弹匣容量 +30%'), max: 3, apply: p => { p.magMul *= 1.3; } },
-  { id: 'hull', rarity: 'common', name: t('强化外壳'), desc: t('最大生命 +25，并回复 25'), apply: p => { p.maxHp += 25; p.heal(25); } },
+  { id: 'hull', rarity: 'common', name: t('强化外壳'), desc: t('最大生命 +25，并回复 25'), max: 4, apply: p => { p.maxHp += 25; p.heal(25); } },
   { id: 'thrust', rarity: 'common', name: t('轻量推进'), desc: t('移动速度 +10%'), apply: p => { p.speed *= 1.1; }, available: p => p.speed < p.mechDef.speed * CAP.speedMul },
   { id: 'dash', rarity: 'common', name: t('相位冲刺'), desc: t('冲刺冷却 -25%'), max: 3, apply: p => { p.dashCdMul *= 0.75; }, available: p => p.dashCooldown > CAP.dashCooldown },
   { id: 'crit', rarity: 'common', name: t('精准校准'), desc: t('暴击率 +8%'), apply: p => { p.critChance = Math.min(CAP.critChance, p.critChance + 0.08); }, available: p => p.critChance < CAP.critChance },
@@ -45,9 +45,9 @@ export const UPGRADES: UpgradeDef[] = [
   // rare
   { id: 'multi', rarity: 'rare', name: t('分裂射击'), desc: t('每次射击多发射子弹'), max: 3, apply: p => { p.extraShots++; } },
   { id: 'pierce', rarity: 'rare', name: t('穿甲弹'), desc: t('子弹额外穿透 1 个敌人'), apply: p => { p.pierce++; } },
-  { id: 'leech', rarity: 'rare', name: t('吸能核心'), desc: t('每次击杀回复 2 生命'), apply: p => { p.leech += 2; } },
+  { id: 'leech', rarity: 'rare', name: t('吸能核心'), desc: t('每次击杀回复 2 生命'), max: 3, apply: p => { p.leech += 2; } },
   { id: 'bounce', rarity: 'rare', name: t('弹射弹道'), desc: t('子弹碰墙反弹 1 次'), max: 3, apply: p => { p.bounce++; } },
-  { id: 'critdmg', rarity: 'rare', name: t('致命打击'), desc: t('暴击伤害 +50%'), apply: p => { p.critMul += 0.5; } },
+  { id: 'critdmg', rarity: 'rare', name: t('致命打击'), desc: t('暴击伤害 +50%'), max: 3, apply: p => { p.critMul += 0.5; } },
   { id: 'burn', rarity: 'rare', name: t('燃烧弹头'), desc: t('命中时 15% 几率点燃敌人'), apply: p => { p.burnChance += 0.15; } },
   { id: 'chill', rarity: 'rare', name: t('寒霜涂层'), desc: t('命中时 15% 几率冻结减速'), apply: p => { p.frostChance += 0.15; } },
   { id: 'shock', rarity: 'rare', name: t('电弧线圈'), desc: t('命中时 12% 几率触发闪电链'), apply: p => { p.shockChance += 0.12; } },
@@ -72,8 +72,8 @@ export const UPGRADES: UpgradeDef[] = [
   { id: 'nova', rarity: 'legendary', name: t('相位新星'), desc: t('冲刺时向四周射出 12 发当前武装的子弹'), max: 1, apply: p => { p.dashNova = true; } },
   { id: 'sentinel', rarity: 'legendary', name: t('驻守模式'), desc: t('站定 0.5 秒后伤害 +50%、射速 +25%（脚下光环变金色）'), max: 1, apply: p => { p.sentinel = true; } },
   {
-    id: 'glass', rarity: 'legendary', name: t('玻璃大炮'), desc: t('伤害 ×1.8，但最大生命减半'), max: 1,
-    apply: p => { p.dmgMul *= 1.8; p.maxHp = Math.max(30, Math.round(p.maxHp * 0.5)); p.hp = Math.min(p.hp, p.maxHp); },
+    id: 'glass', rarity: 'legendary', name: t('玻璃大炮'), desc: t('伤害 +60%，但最大生命减半'), max: 1,
+    apply: p => { p.dmgBonus += 0.6; p.maxHp = Math.max(30, Math.round(p.maxHp * 0.5)); p.hp = Math.min(p.hp, p.maxHp); },
   },
 ];
 

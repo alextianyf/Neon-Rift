@@ -30,8 +30,9 @@ export interface HudStats {
   skillCd: number;
   skillTotal: number;
   skillActive: boolean;
-  reload: number | null;  // 0..1 progress of the current reload
+  ring: { p: number; kind: 'reload' | 'charge' | 'heat' } | null;  // crosshair ring: reload, rail charge or flame heat
   slots: WeaponSlot[];
+  pulse: { n: number; every: number } | null;  // pulse rifle rhythm, shown as pips under the crosshair
   magSize: (s: WeaponSlot) => number;
   statuses: StatusIcon[];
   room: number;
@@ -44,6 +45,7 @@ export interface HudStats {
 }
 
 const hex = (c: number) => `#${c.toString(16).padStart(6, '0')}`;
+const RING_CLASS = { reloading: 'reload', charging: 'charge', heating: 'heat' } as const;
 
 export class Hud {
   private readonly root = $('hud');
@@ -51,6 +53,8 @@ export class Hud {
   private readonly hpText = $('hpText');
   private readonly shieldPip = $('shieldPip');
   private readonly gauge = $('mechGauge');
+  private readonly tagsEl = $('tags');
+  private readonly tagPool: { el: HTMLElement; key: string }[] = [];
   private readonly gDash = this.gauge.querySelector<HTMLElement>('.gdash')!;
   private readonly gDashFill = this.gauge.querySelector<HTMLElement>('.gdash > div')!;
   private readonly gSkill = this.gauge.querySelector<HTMLElement>('.gskill')!;
@@ -77,9 +81,12 @@ export class Hud {
   private readonly hintEl = $('hint');
   private readonly hintText = $('hintText');
   private readonly vignette = $('vignette');
+  private readonly dark = $('dark');
   private readonly fadeEl = $('fade');
   private readonly fadeText = $('fadeText');
   private readonly cross = $('cross');
+  private readonly pips = $('pips');
+  private pipKey = '';
   private toastTimer = 0;
   private hitTimer = 0;
   private ammoEls: HTMLElement[] = [];
@@ -98,8 +105,17 @@ export class Hud {
     this.cooldown(this.hkDash, s.dashCd, s.dashTotal);
     this.cooldown(this.hkSkill, s.skillCd, s.skillTotal);
     this.hkSkill.classList.toggle('active', s.skillActive);
-    this.cross.classList.toggle('reloading', s.reload !== null);
-    if (s.reload !== null) this.cross.style.setProperty('--rp', String(clamp(s.reload, 0, 1)));
+    for (const k of ['reloading', 'charging', 'heating'] as const) this.cross.classList.toggle(k, s.ring?.kind === RING_CLASS[k]);
+    if (s.ring) this.cross.style.setProperty('--rp', String(clamp(s.ring.p, 0, 1)));
+    this.cross.classList.toggle('pulse', s.pulse !== null);
+    if (s.pulse) {
+      const key = `${s.pulse.n}/${s.pulse.every}`;
+      if (this.pipKey !== key) {
+        this.pipKey = key;
+        this.pips.innerHTML = Array.from({ length: s.pulse.every - 1 }, (_, i) => `<i class="${i < s.pulse!.n ? 'on' : ''}"></i>`).join('');
+        this.pips.classList.toggle('ready', s.pulse.n === s.pulse.every - 1);
+      }
+    }
     s.slots.forEach((slot, i) => {
       const el = this.ammoEls[i];
       if (!el) return;
@@ -201,6 +217,16 @@ export class Hud {
     this.hitTimer = window.setTimeout(() => this.cross.classList.remove('hit', 'kill'), kill ? 220 : 90);
   }
 
+  // Darkness closing in around the player (0 = none); (x, y) is the player on screen.
+  darkness(level: number, x: number, y: number): void {
+    const el = this.dark;
+    el.style.opacity = level > 0.01 ? String(Math.min(1, level)) : '0';
+    if (level <= 0.01) return;
+    el.style.setProperty('--x', `${x}px`);
+    el.style.setProperty('--y', `${y}px`);
+    el.style.setProperty('--r', `${Math.round(120 + 260 * (1 - Math.min(1, level)))}px`);
+  }
+
   hurtFlash(color: 'red' | 'blue' = 'red'): void {
     this.vignette.classList.toggle('blue', color === 'blue');
     this.vignette.style.opacity = '1';
@@ -226,6 +252,23 @@ export class Hud {
     const text = active || s.skillCd > 0 ? `F ${left < 10 ? left.toFixed(1) : Math.ceil(left)}s` : '';
     if (this.gSkillText.textContent !== text) this.gSkillText.textContent = text;
     if (active) this.gSkillFill.style.width = `${clamp(s.skillT / s.skillDur, 0, 1) * 100}%`;
+  }
+
+  // Elite affix names above each elite, at screen positions the game projects.
+  tags(list: { x: number; y: number; key: string; html: string }[]): void {
+    while (this.tagPool.length < list.length) {
+      const el = document.createElement('div');
+      el.className = 'etag';
+      this.tagsEl.appendChild(el);
+      this.tagPool.push({ el, key: '' });
+    }
+    this.tagPool.forEach((tag, i) => {
+      const d = list[i];
+      tag.el.style.display = d ? '' : 'none';
+      if (!d) return;
+      tag.el.style.transform = `translate(${d.x}px, ${d.y}px) translate(-50%, -100%)`;
+      if (tag.key !== d.key) { tag.key = d.key; tag.el.innerHTML = d.html; }
+    });
   }
 
   // Hotbar key: dark sweep over the icon plus the seconds left while cooling down.

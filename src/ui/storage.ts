@@ -1,9 +1,10 @@
+import { storageKey } from '../core/testMode';
 export interface BestRecord {
   room: number;
   score: number;
 }
 
-const KEY = 'neonrift.best';
+const KEY = storageKey('neonrift.best');
 
 // localStorage can throw (private mode, blocked storage), so failures just mean "no record".
 export function loadBest(): BestRecord | null {

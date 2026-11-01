@@ -4,7 +4,10 @@ import { sfx } from '../core/audio';
 import { rand } from '../core/math';
 import { BALANCE } from '../data/balance';
 import type { UpgradeDef } from '../data/upgrades';
-import { MAX_WEAPON_SLOTS, WEAPONS, weaponLevelMul, type WeaponDef, type WeaponId } from '../data/weapons';
+import { MAX_WEAPON_LEVEL, MAX_WEAPON_SLOTS, TRAITS, WEAPONS, weaponLevelMul, type WeaponDef, type WeaponId } from '../data/weapons';
+import type { ShotStats } from './projectiles';
+import type { Enemy } from './enemies';
+import { untargetable } from './enemyAI';
 import type { Game } from './game';
 import { MechModel } from './mech';
 import { MECHS, type MechDef, type TalentId } from '../data/meta';
@@ -36,6 +39,7 @@ export interface WeaponSlot {
 export type WeaponGain =
   | { kind: 'added' }
   | { kind: 'levelup'; level: number }
+  | { kind: 'maxed' }  // already max level: ammo refilled instead
   | { kind: 'swapped'; dropped: WeaponSlot };
 
 export class Player {
@@ -60,6 +64,9 @@ export class Player {
   maxHp = P.hp;
   speed = P.speed;
   dashCd = 0;
+  chillT = 0;      // frost affix: slowed while > 0
+  readonly capBoost = { dmg: 0, crit: 0, rate: 0, speed: 0 };  // epoch boons raise the stat caps
+  latched = 0;     // parasites stuck to the mech (set by Enemies each frame)
   dashT = 0;
   invuln = 0;
   fireCd = 0;
@@ -73,7 +80,8 @@ export class Player {
   private readonly upgrades = new Map<string, number>();
 
   // stats changed by upgrades
-  dmgMul = 1;
+  dmgBonus = 0;         // additive "+X% damage" pool (modules, talent), capped
+  private baseDmgMul = 1;  // mech multiplier
   rateMul = 1;
   reloadMul = 1;       // reload speed
   magMul = 1;          // magazine size
@@ -109,6 +117,18 @@ export class Player {
   dashNova = false;    // dashing fires a ring of shots
   sentinel = false;    // standing still boosts damage and fire rate
   private shotCount = 0;
+  // weapon signature traits on the firing side
+  private pulseCount = 0;  // pulse: shots toward the next charged one
+  private sprayT = 0;      // smg: how long the trigger has been held
+  heat = 0;                // flame: 0..1 toward white-hot
+  private heatIdle = 0;
+  charge = 0;              // rail: seconds charged
+  private railFrac = 1;    // rail: charge of the shot being fired
+  readonly locks: Enemy[] = [];  // swarm: locked targets, one missile each
+  private lockT = 0;
+  private holding = false; // swarm: trigger held (scanning)
+  // swarm: missiles of the current volley still waiting to launch (staggered, on the game clock)
+  private launches: { t: number; angle: number; shot: ShotStats; target: Enemy | null }[] = [];
   private stillT = 0;
   private dryToastT = 0;
 
@@ -135,7 +155,8 @@ export class Player {
     this.vel.set(0, 0, 0);
     this.aim.set(0, 0, -1);
     this.dashDir.set(0, 0, -1);
-    this.dashCd = this.dashT = this.invuln = this.fireCd = this.reloadT = 0;
+    this.dashCd = this.dashT = this.invuln = this.fireCd = this.reloadT = this.chillT = this.latched = 0;
+    Object.assign(this.capBoost, { dmg: 0, crit: 0, rate: 0, speed: 0 });
     this.coins = 0;
     this.reloadMul = this.magMul = 1;
     this.slots = [{ id: mech.starter, level: 1, mag: WEAPONS[mech.starter].mag, reserve: 0, starter: true }];
@@ -143,7 +164,8 @@ export class Player {
     this.buffs = [];
     this.taken.length = 0;
     this.upgrades.clear();
-    this.dmgMul = this.rateMul = this.dashCdMul = this.blastMul = this.blastDmgMul = 1;
+    this.dmgBonus = 0;
+    this.rateMul = this.dashCdMul = this.blastMul = this.blastDmgMul = 1;
     this.extraShots = this.pierce = this.bounce = this.leech = 0;
     this.critChance = P.critChance;
     this.critMul = P.critMul;
@@ -153,6 +175,10 @@ export class Player {
     this.homing = this.dashBlast = this.frenzy = this.chainSpread = false;
     this.flameTrail = this.killBlast = this.dashNova = this.sentinel = false;
     this.rocketEvery = this.orbitals = this.shotCount = this.stillT = 0;
+    this.pulseCount = this.sprayT = this.heat = this.heatIdle = this.charge = this.lockT = 0;
+    this.locks.length = 0;
+    this.launches.length = 0;
+    this.holding = false;
     this.synergyMul = this.synergyRadius = 1;
     this.chainExtra = 0;
     this.mesh.visible = true;
@@ -164,7 +190,8 @@ export class Player {
     this.hp = this.maxHp = mech.hp + t('armor') * 10;
     this.speed = mech.speed;
     this.dashCdMul = mech.dashCdMul * (1 - t('thrusters') * 0.06);
-    this.dmgMul = mech.dmgMul * (1 + t('firepower') * 0.05);
+    this.baseDmgMul = mech.dmgMul;
+    this.dmgBonus = t('firepower') * 0.05;
     this.critChance += mech.critBonus;
     this.coinMul = 1 + t('salvage') * 0.1;
     this.coins = t('funding') * 15;
@@ -239,12 +266,23 @@ export class Player {
     return aimPoint;
   }
 
+  // Damage multiplier: mech base x (1 + the capped additive pool). Conditional boosts
+  // (overdrive, sentinel) are applied per shot on top of this.
+  get dmgMul(): number {
+    return this.baseDmgMul * (1 + Math.min(CAP.dmgBonus + this.capBoost.dmg, this.dmgBonus));
+  }
+
   get dashCooldown(): number {
     return Math.max(CAP.dashCooldown, P.dashCooldown * this.dashCdMul);
   }
 
+  // Slows from enemies: the frost affix and parasites riding on the mech.
+  get statusSlow(): number {
+    return (this.chillT > 0 ? 0.7 : 1) * Math.max(0.25, 1 - 0.25 * this.latched);
+  }
+
   get moveSpeed(): number {
-    return Math.min(this.speed, this.mechDef.speed * CAP.speedMul);
+    return Math.min(this.speed, this.mechDef.speed * (CAP.speedMul + this.capBoost.speed));
   }
 
   get activeSlot(): WeaponSlot {
@@ -257,7 +295,7 @@ export class Player {
 
   get fireRateMul(): number {
     const mul = this.rateMul * (this.frenzy && this.hp < this.maxHp * 0.5 ? 1.5 : 1) * (this.overdrive ? 1.6 : 1) * (this.anchored ? 1.25 : 1);
-    return Math.min(CAP.fireRateMul, mul);
+    return Math.min(CAP.fireRateMul + this.capBoost.rate, mul);
   }
 
   // Reload time for a weapon after modules, never below the cap.
@@ -265,8 +303,19 @@ export class Player {
     return Math.max(CAP.reloadTime, w.reloadT * Math.max(CAP.reloadTimeMul, 1 / this.reloadMul));
   }
 
-  magSize(id: WeaponId): number {
-    return Math.max(1, Math.round(WEAPONS[id].mag * this.magMul));
+  magSize(id: WeaponId, level = 1): number {
+    const bonus = id === 'rocket' && level >= 3 ? TRAITS.rocket.magLv3 : 0;
+    return Math.max(1, Math.round((WEAPONS[id].mag + bonus) * this.magMul));
+  }
+
+  // Rail: seconds to a full charge at the active weapon's level.
+  get chargeTime(): number {
+    return this.activeSlot.level >= 3 ? TRAITS.rail.chargeLv3 : TRAITS.rail.charge;
+  }
+
+  // Flame: the heat cap (white-hot bonus) at the active weapon's level.
+  get heatMax(): number {
+    return this.activeSlot.level >= 5 ? TRAITS.flame.heatMaxLv5 : TRAITS.flame.heatMax;
   }
 
   // 0..1 progress of the current reload, or null when not reloading.
@@ -298,7 +347,7 @@ export class Player {
   restoreSlots(slots: WeaponSlot[], active: number): void {
     this.slots = slots.map((s, i) => {
       const starter = i === 0 && s.id === this.mechDef.starter;
-      const slot: WeaponSlot = { id: s.id, level: s.level, mag: s.mag ?? this.magSize(s.id), reserve: s.reserve ?? WEAPONS[s.id].reserve };
+      const slot: WeaponSlot = { id: s.id, level: s.level, mag: s.mag ?? this.magSize(s.id, s.level), reserve: s.reserve ?? WEAPONS[s.id].reserve };
       if (starter) slot.starter = true;
       return slot;
     });
@@ -319,13 +368,14 @@ export class Player {
   addWeapon(id: WeaponId, level = 1, ammo?: { mag: number; reserve: number }): WeaponGain {
     const owned = this.slots.find(s => s.id === id);
     if (owned) {
-      owned.level += level;
+      const maxed = owned.level >= MAX_WEAPON_LEVEL;
+      owned.level = Math.min(MAX_WEAPON_LEVEL, owned.level + level);
       if (!owned.starter) owned.reserve = WEAPONS[id].reserve;
-      owned.mag = this.magSize(id);
+      owned.mag = this.magSize(id, owned.level);
       if (owned === this.activeSlot) this.reloadT = 0;
-      return { kind: 'levelup', level: owned.level };
+      return maxed ? { kind: 'maxed' } : { kind: 'levelup', level: owned.level };
     }
-    const slot: WeaponSlot = { id, level, mag: ammo?.mag ?? this.magSize(id), reserve: ammo?.reserve ?? WEAPONS[id].reserve };
+    const slot: WeaponSlot = { id, level: Math.min(MAX_WEAPON_LEVEL, level), mag: ammo?.mag ?? this.magSize(id, level), reserve: ammo?.reserve ?? WEAPONS[id].reserve };
     this.reloadT = 0;
     if (this.slots.length < MAX_WEAPON_SLOTS) {
       this.slots.push(slot);
@@ -365,14 +415,14 @@ export class Player {
   // R key: reload the active weapon if it isn't full and there's ammo to load.
   startReload(): void {
     const s = this.activeSlot;
-    if (this.reloadT > 0 || s.mag >= this.magSize(s.id) || (!s.starter && s.reserve <= 0)) return;
+    if (this.reloadT > 0 || s.mag >= this.magSize(s.id, s.level) || (!s.starter && s.reserve <= 0)) return;
     this.reloadTotal = this.reloadT = this.reloadTime(this.weaponDef);
     sfx.reload();
   }
 
   private finishReload(): void {
     const s = this.activeSlot;
-    const need = this.magSize(s.id) - s.mag;
+    const need = this.magSize(s.id, s.level) - s.mag;
     const take = s.starter ? need : Math.min(need, s.reserve);
     s.mag += take;
     if (!s.starter) s.reserve -= take;
@@ -383,6 +433,8 @@ export class Player {
     if (i === this.weapon || i < 0 || i >= this.slots.length) return false;
     this.weapon = i;
     this.reloadT = 0;  // switching cancels a reload
+    this.charge = this.heat = this.sprayT = 0;
+    this.dropLocks();
     this.updateGunColor();
     sfx.weaponSwitch(i);
     return true;
@@ -395,6 +447,7 @@ export class Player {
     this.invuln = Math.max(this.invuln, P.dashInvuln);
     this.dashCd = this.dashCooldown;
     sfx.dash();
+    g.enemies.shakeOff();
     if (this.dashNova) {
       const w = this.weaponDef;
       const shot = { dmg: w.dmg * this.dmgMul * weaponLevelMul(this.activeSlot.level) * 0.8, pierce: 1, bounce: 0, blast: 0, homing: false };
@@ -417,6 +470,7 @@ export class Player {
       }
     }
     this.dashCd -= dt;
+    this.chillT -= dt;
     this.invuln -= dt;
     this.fireCd -= dt;
     this.skillCd -= dt;
@@ -438,14 +492,19 @@ export class Player {
       this.vel.copy(this.dashDir).multiplyScalar(this.moveSpeed);
     } else {
       const dir = g.input.moveDir(moveDir);
-      const k = 1 - Math.exp(-14 * dt);
-      const speed = this.moveSpeed * g.hazards.slowAt(this.pos.x, this.pos.z);
+      // on ice the mech slides: speeding up and slowing down take ~3x longer
+      const ice = g.slippery || g.ground.iceAt(this.pos.x, this.pos.z);
+      const k = 1 - Math.exp(-(ice ? 4.2 : 14) * dt);
+      const speed = this.moveSpeed * g.hazards.slowAt(this.pos.x, this.pos.z) * g.ground.slowAt(this.pos.x, this.pos.z) * this.statusSlow;
       this.vel.x += (dir.x * speed - this.vel.x) * k;
       this.vel.z += (dir.z * speed - this.vel.z) * k;
       this.pos.addScaledVector(this.vel, dt);
     }
     g.room.collide(this.pos, this.r);
-    if (g.input.firing && this.fireCd <= 0 && this.reloadT <= 0) this.tryFire(g);
+    this.updateWeaponState(dt, g);
+    if (this.weaponDef.id === 'rail') this.updateRail(dt, g);
+    else if (this.weaponDef.id === 'swarm') this.updateSwarm(dt, g);
+    else if (g.input.firing && this.fireCd <= 0 && this.reloadT <= 0) this.tryFire(g);
 
     this.mesh.position.copy(this.pos);
     this.faceYaw = g.input.stickAim ? Math.atan2(this.aim.x, this.aim.z) : this.screenFacing(g);
@@ -480,12 +539,110 @@ export class Player {
     if (starter >= 0) g.switchWeapon(starter);
   }
 
+  // Flame heat and smg spray time follow the trigger; queued swarm missiles launch.
+  private updateWeaponState(dt: number, g: Game): void {
+    for (let i = this.launches.length - 1; i >= 0; i--) {
+      const l = this.launches[i];
+      if ((l.t -= dt) > 0) continue;
+      this.launches.splice(i, 1);
+      const w = WEAPONS.swarm, muzzle = this.mech.muzzle(this.nextArm, this.pos, this.faceYaw, new THREE.Vector3());
+      this.nextArm = this.nextArm === 0 ? 1 : 0;
+      g.projectiles.firePlayer(muzzle, l.angle, w.speed * rand(0.9, 1.1), w, l.shot, l.target);
+    }
+    const id = this.weaponDef.id, shooting = g.input.firing && this.reloadT <= 0 && (this.activeSlot.mag > 0 || this.overdrive);
+    this.sprayT = id === 'smg' && shooting ? this.sprayT + dt : 0;
+    if (id === 'flame' && shooting) {
+      const speed = this.activeSlot.level >= 5 ? 2 : 1;
+      this.heat = Math.min(1, this.heat + dt * speed / TRAITS.flame.heatTime);
+      this.heatIdle = 0;
+    } else if ((this.heatIdle += dt) > TRAITS.flame.coolDelay) {
+      this.heat = 0;
+    }
+  }
+
+  // Rail: hold the trigger to charge, release to fire. An empty magazine reloads as usual.
+  private updateRail(dt: number, g: Game): void {
+    const s = this.activeSlot;
+    if (g.input.firing) {
+      if (this.fireCd > 0 || this.reloadT > 0) return;
+      if (s.mag <= 0 && !this.overdrive) { this.tryFire(g); return; }
+      if (this.charge === 0) sfx.charge();
+      this.charge = Math.min(this.chargeTime, this.charge + dt);
+    } else if (this.charge > 0) {
+      this.railFrac = this.charge / this.chargeTime;
+      this.charge = 0;
+      this.tryFire(g);
+    }
+  }
+
+  // Swarm: hold to sweep the crosshair over enemies and lock them; release to fire a missile per lock.
+  get maxLocks(): number {
+    const cap = this.activeSlot.level >= 3 ? TRAITS.swarm.maxLocksLv3 : TRAITS.swarm.maxLocks;
+    return this.overdrive ? cap : Math.min(cap, this.activeSlot.mag);
+  }
+
+  private updateSwarm(dt: number, g: Game): void {
+    const s = this.activeSlot, S = TRAITS.swarm;
+    if (g.input.firing) {
+      if (this.fireCd > 0 || this.reloadT > 0) return;
+      if (s.mag <= 0 && !this.overdrive) { this.tryFire(g); return; }
+      this.holding = true;
+      this.lockT += dt;
+      if (this.lockT < S.lockEvery || this.locks.length >= this.maxLocks) return;
+      // lock the enemy nearest the crosshair
+      let best: Enemy | null = null, bestD = S.lockRadius;
+      for (const e of g.enemies.list) {
+        if (e.hp <= 0 || e.spawnT > 0 || untargetable(e)) continue;
+        const d = Math.hypot(e.pos.x - aimPoint.x, e.pos.z - aimPoint.z) - e.r;
+        if (d < bestD) { bestD = d; best = e; }
+      }
+      if (!best) return;
+      this.lockT = 0;
+      this.locks.push(best);
+      g.arsenal.lock(best);
+      sfx.lock(this.locks.length);
+    } else if (this.holding) {
+      this.holding = false;
+      this.fireSwarm(g);
+    }
+  }
+
+  private fireSwarm(g: Game): void {
+    const w = this.weaponDef, s = this.activeSlot, S = TRAITS.swarm;
+    const targets: (Enemy | null)[] = this.locks.length ? [...this.locks] : new Array(Math.min(S.straight, this.overdrive ? S.straight : s.mag)).fill(null);
+    this.dropLocks();
+    g.arsenal.clearLocks();
+    if (!targets.length) return;
+    if (!this.overdrive) s.mag -= targets.length;
+    // a locked volley recovers fast; firing blind (no locks) is slower, so locking on pays off
+    this.fireCd = (targets[0] ? w.rate : S.straightCd) / this.fireRateMul;
+    const muzzle = this.mech.muzzle(this.nextArm, this.pos, this.faceYaw, new THREE.Vector3());
+    const base = Math.atan2(aimPoint.x - muzzle.x, aimPoint.z - muzzle.z);
+    const shot: ShotStats = {
+      dmg: w.dmg * this.dmgMul * weaponLevelMul(s.level) * (this.overdrive ? 1.2 : 1) * (this.anchored ? 1.5 : 1),
+      pierce: 0, bounce: 0, blast: (w.blast ?? 1) * this.blastMul * (s.level >= 5 ? S.blastLv5 : 1), homing: false, weapon: 'swarm', level: s.level,
+    };
+    targets.forEach((target, i) => {
+      // locked missiles fan out wide and curl in; straight ones keep a tight spread
+      const fan = target ? rand(-1, 1) * 0.8 : (i - (targets.length - 1) / 2) * w.spread;
+      this.launches.push({ t: i * 0.04, angle: base + fan, shot, target });
+    });
+    this.vel.addScaledVector(this.aim, -w.recoil);
+    g.fx.shake(w.shake);
+    sfx.shoot.swarm();
+    if (s.mag <= 0) this.startReload();
+  }
+
+  private dropLocks(): void {
+    if (!this.locks.length) return;
+    this.locks.length = 0;
+    this.lockT = 0;
+  }
+
   private fire(g: Game): void {
-    const w = this.weaponDef;
+    let w = this.weaponDef;
+    const lv = this.activeSlot.level;
     this.fireCd = w.rate / this.fireRateMul;
-    const count = w.count + this.extraShots * (w.count > 1 ? 2 : 1);
-    const spread = count > 1 ? Math.max(w.spread, 0.07 * (count - 1)) : 0;
-    const jitter = w.jitter ?? w.spread * 0.3;
     // alternate between the two arm cannons
     const arm = this.nextArm;
     this.nextArm = arm === 0 ? 1 : 0;
@@ -495,13 +652,29 @@ export class Player {
     // is on top of the mech, just fire straight ahead
     const dx = aimPoint.x - muzzle.x, dz = aimPoint.z - muzzle.z;
     const base = dx * this.aim.x + dz * this.aim.z > 0.5 ? Math.atan2(dx, dz) : yaw;
-    const shot = {
-      dmg: w.dmg * this.dmgMul * weaponLevelMul(this.activeSlot.level) * (this.overdrive ? 1.2 : 1) * (this.anchored ? 1.5 : 1),
+    const shot: ShotStats = {
+      dmg: w.dmg * this.dmgMul * weaponLevelMul(lv) * (this.overdrive ? 1.2 : 1) * (this.anchored ? 1.5 : 1),
       pierce: (w.pierce ?? 0) + this.pierce,
       bounce: (w.bounce ?? 0) + this.bounce,
       blast: w.blast ? w.blast * this.blastMul : 0,
       homing: this.homing,
+      weapon: w.id,
+      level: lv,
     };
+    const traitW = this.applyTrait(w, shot, lv, g);
+    if (!traitW) {
+      // melee: the swing was handled by the trait
+      g.arsenal.slash(base, shot, lv);
+      this.vel.addScaledVector(this.aim, -w.recoil);
+      g.fx.shake(w.shake);
+      this.mech.kick(arm);
+      sfx.shoot[w.id]();
+      return;
+    }
+    w = traitW;
+    const count = w.count + this.extraShots * (w.count > 1 ? 2 : 1) + (w.id === 'shotgun' && lv >= 3 ? TRAITS.shotgun.pelletsLv3 : 0);
+    const spread = count > 1 ? Math.max(w.spread, 0.07 * (count - 1)) : 0;
+    const jitter = (w.jitter ?? w.spread * 0.3) * (w.id === 'smg' && this.sprayT > TRAITS.smg.tightenAfter ? 0.5 : 1);
     for (let i = 0; i < count; i++) {
       const a = base + (count > 1 ? -spread + 2 * spread * i / (count - 1) : 0) + rand(-1, 1) * jitter;
       const speed = w.speed * (w.count > 1 ? rand(0.85, 1.1) : 1);
@@ -518,9 +691,88 @@ export class Player {
     this.vel.addScaledVector(this.aim, -w.recoil);
     g.fx.shake(w.shake);
     this.mech.kick(arm);
+    if (shot.charged) sfx.pulseCharged();
     // light the area ahead of the barrel, not the mech's own armor
     g.gfx.flash(muzzle.x + this.aim.x, muzzle.y, muzzle.z + this.aim.z, w.color, w.flash ?? 12);
     sfx.shoot[w.id]();
+  }
+
+  // Per-weapon tweaks to one trigger pull. Returns the weapon def to fire (a modified copy when the
+  // trait changes how the projectile looks or flies).
+  private applyTrait(w: WeaponDef, shot: ShotStats, lv: number, g: Game): WeaponDef | null {
+    const T = TRAITS;
+    switch (w.id) {
+      case 'pulse': {
+        this.pulseCount++;
+        if (this.pulseCount % (lv >= 3 ? T.pulse.everyLv3 : T.pulse.every) !== 0) return w;
+        shot.charged = true;
+        shot.dmg *= T.pulse.mul;
+        shot.pierce += 1;
+        return { ...w, size: w.size * 1.9, color: 0xdffcff, knock: 8, stretch: 1.6 };
+      }
+      case 'shotgun':
+        shot.group = { nearHits: 0, quaked: false };
+        return w;
+      case 'frost':
+        if (lv >= 3) shot.pierce += 1;
+        return w;
+      case 'flame': {
+        shot.dmg *= 1 + this.heat * this.heatMax;
+        const range = lv >= 3 ? T.flame.rangeLv3 : 1;
+        // the jet burns enemy bullets along its length
+        const pts = [1.2, 2.4, 3.6 * range].map(d => new THREE.Vector3(this.pos.x + this.aim.x * d, 0, this.pos.z + this.aim.z * d));
+        g.projectiles.clearEnemyBulletsAt(pts, T.flame.burnRadius);
+        // orange -> yellow -> white-blue as it heats up (quantised so glow materials stay cached)
+        const k = Math.round(this.heat * 4) / 4;
+        const color = k < 0.5 ? lerpHex(0xff7a2a, 0xffd23f, k * 2) : lerpHex(0xffd23f, 0xcfe8ff, (k - 0.5) * 2);
+        return { ...w, life: w.life * range, color };
+      }
+      case 'grenade':
+        if (lv >= 3) shot.blast *= T.grenade.radiusLv3;
+        return w;
+      case 'rocket':
+        if (lv >= 5) { shot.homing = true; shot.homingTurn = T.rocket.homingTurn; }
+        return w;
+      case 'rail': {
+        const full = this.railFrac >= 1;
+        shot.dmg *= T.rail.minMul + (1 - T.rail.minMul) * this.railFrac;
+        this.railFrac = 1;
+        this.railBeam(g, full);
+        return full ? { ...w, size: w.size * 1.4, shake: w.shake * 1.5 } : w;
+      }
+      case 'disc': {
+        const big = lv >= 3;
+        shot.range = T.disc.range * (big ? T.disc.rangeLv3 : 1);
+        const disc = { ...w, size: w.size * (big ? T.disc.sizeLv3 : 1) };
+        if (lv < 5) return disc;
+        shot.dmg *= T.disc.pairMul;
+        return { ...disc, count: 2, spread: T.disc.pairAngle };
+      }
+      case 'blade':
+        return null;
+      case 'prism':
+        shot.refract = lv >= 5 ? 2 : 1;
+        return w;
+      default:
+        return w;
+    }
+  }
+
+  // Rail afterglow: a bright bar from the barrel to where the beam meets a wall.
+  private railBeam(g: Game, full: boolean): void {
+    const from = new THREE.Vector3(this.pos.x + this.aim.x, CANNON_Y, this.pos.z + this.aim.z);
+    let d = 0;
+    while (d < 40 && !g.room.shotBlocked(from.x + this.aim.x * d, from.z + this.aim.z * d)) d += 0.5;
+    const to = { x: from.x + this.aim.x * d, y: CANNON_Y, z: from.z + this.aim.z * d };
+    g.fx.beam(from, to, full ? 0xd2c2ff : 0xa996e6, full ? 0.16 : 0.08, full ? 0.4 : 0.25);
+    g.fx.burst(to, 0xe6d9ff, full ? 12 : 5, 6, 0.14, 0.3);
+  }
+
+  // Pulse: shots so far toward the next charged one, for the crosshair pips.
+  get pulseRhythm(): { n: number; every: number } | null {
+    if (this.weaponDef.id !== 'pulse') return null;
+    const every = this.activeSlot.level >= 3 ? TRAITS.pulse.everyLv3 : TRAITS.pulse.every;
+    return { n: this.pulseCount % every, every };
   }
 
   // The camera is tilted, so a world-space yaw toward the cursor looks rotated on screen
@@ -545,4 +797,9 @@ export class Player {
   private updateGunColor(): void {
     this.mech.setWeaponColor(this.weaponDef.color);
   }
+}
+
+function lerpHex(a: number, b: number, k: number): number {
+  const ch = (s: number) => Math.round(((a >> s) & 255) + (((b >> s) & 255) - ((a >> s) & 255)) * k);
+  return (ch(16) << 16) | (ch(8) << 8) | ch(0);
 }

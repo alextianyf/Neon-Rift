@@ -1,6 +1,9 @@
 import { BALANCE } from '../data/balance';
 import { MECHS, TALENTS, type MechId, type TalentId } from '../data/meta';
 import { ENEMY_NOTES } from '../data/codex';
+import { AFFIXES, type AffixId } from '../data/affixes';
+import { VARIANTS } from '../data/variants';
+import { ensureFusion } from '../game/fusion';
 import { ENEMIES, type EnemyKind } from '../data/enemies';
 import { RARITY_LABEL, UPGRADES, type UpgradeDef } from '../data/upgrades';
 import { WEAPONS, type WeaponId } from '../data/weapons';
@@ -144,11 +147,13 @@ export class Screens {
   showCodex(profile: Profile, tab: CodexKind | 'history'): void {
     for (const el of document.querySelectorAll<HTMLElement>('#codexTabs [data-tab]')) el.classList.toggle('on', el.dataset.tab === tab);
     const known = (kind: CodexKind, id: string) => profile.codex[kind].includes(id);
+    const knownIds = (kind: CodexKind) => profile.codex[kind];
     const unknown = `<div class="centry unknown"><b>？？？</b><div class="dim">${t('尚未遇到')}</div></div>`;
     let html = '';
     let count = '';
     if (tab === 'enemies') {
-      const ids = Object.keys(ENEMIES) as EnemyKind[];
+      // boss pieces and the like aren't codex entries; fusions get their own section below
+      const ids = (Object.keys(ENEMIES) as EnemyKind[]).filter(id => !ENEMIES[id].part && !ENEMIES[id].bound && !id.startsWith('fusion:'));
       count = `${ids.filter(id => known('enemies', id)).length} / ${ids.length}`;
       html = ids.map(id => {
         if (!known('enemies', id)) return unknown;
@@ -156,6 +161,19 @@ export class Screens {
         return `<div class="centry" style="--cc:${hex(d.color)}"><b><i class="dot"></i>${d.name}${d.boss ? ` <span class="ctag">${t('首领')}</span>` : ''}</b>` +
           `<div class="dim">${ENEMY_NOTES[id]}</div><div class="cstat">${t('生命 {a} · 伤害 {b} · 分数 {c}', { a: d.hp, b: d.dmg, c: d.score })}</div></div>`;
       }).join('');
+      // abyss variants met ("variant:<kind>"), then fusions ("fusion:...", rebuilt from the id)
+      html += VARIANTS.filter(v => known('enemies', `variant:${v.kind}`)).map(v =>
+        `<div class="centry" style="--cc:#8a0818"><b><i class="dot"></i>${t('异变·')}${ENEMIES[v.kind].name} <span class="ctag">${t('变种')}</span></b>` +
+        `<div class="dim">${v.desc}</div></div>`).join('');
+      html += knownIds('enemies').filter(id => id.startsWith('fusion:') && ensureFusion(id)).map(id => {
+        const d = ENEMIES[id as EnemyKind];
+        return `<div class="centry" style="--cc:${hex(d.color)}"><b><i class="dot"></i>${d.name} <span class="ctag">${t('融合体')}</span></b>` +
+          `<div class="dim">${ENEMY_NOTES[id as EnemyKind]}</div></div>`;
+      }).join('');
+      // elite affixes seen so far (stored as "affix:<id>" among the enemies)
+      html += (Object.keys(AFFIXES) as AffixId[]).filter(a => known('enemies', `affix:${a}`)).map(a =>
+        `<div class="centry" style="--cc:${hex(AFFIXES[a].color)}"><b><i class="dot"></i>${AFFIXES[a].name} <span class="ctag">${t('精英词缀')}</span></b>` +
+        `<div class="dim">${AFFIXES[a].desc}</div></div>`).join('');
     } else if (tab === 'weapons') {
       const ids = Object.keys(WEAPONS) as WeaponId[];
       count = `${ids.filter(id => known('weapons', id)).length} / ${ids.length}`;

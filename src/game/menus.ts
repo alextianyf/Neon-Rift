@@ -1,4 +1,5 @@
 import { sfx } from '../core/audio';
+import { duck } from '../core/music';
 import { t } from '../core/i18n';
 import type { PadButton } from '../core/input';
 import { todayKey } from '../core/rng';
@@ -11,7 +12,8 @@ import type { Game } from './game';
 type CodexTab = CodexKind | 'history';
 const CODEX_TABS: CodexTab[] = ['enemies', 'weapons', 'upgrades', 'history'];
 
-// Title-screen menus: the title itself, the depth selector, the hangar and the codex.
+// Title-screen menus: the title itself, the depth selector, the hangar and the codex. The hangar also
+// opens mid-run from a shop's terminal; there every purchase applies to the current run at once.
 export class Menus {
   private codexTab: CodexTab = 'enemies';
 
@@ -94,8 +96,28 @@ export class Menus {
     this.g.screens.toggle('hangarScreen', true);
   }
 
-  private closeHangar(): void {
+  // Hangar terminal in a shop: the game freezes behind the hangar screen.
+  openRunHangar(): void {
+    const g = this.g;
+    g.state = 'hangar';
+    g.input.mouseDown = false;
+    g.input.releaseTouch();
+    duck(true);
+    g.hud.prompt(null);
+    g.screens.setCrosshair(false);
+    sfx.pickup();
+    this.renderHangar();
+    g.screens.toggle('hangarScreen', true);
+  }
+
+  closeHangar(): void {
     this.g.screens.toggle('hangarScreen', false);
+    if (this.g.state === 'hangar') {
+      this.g.state = 'play';
+      duck(false);
+      this.g.screens.setCrosshair(true);
+      return;
+    }
     this.g.player.setMech(MECHS[this.g.progress.profile.selected]);
     this.refreshTitle();
     this.g.screens.toggle('titleScreen', true);
@@ -103,7 +125,8 @@ export class Menus {
 
   private renderHangar(): void {
     const { progress, player } = this.g;
-    const pr = progress.profile;
+    const pr = progress.profile, inRun = this.g.state === 'hangar';
+    const toast = (s: string) => { if (inRun) this.g.hud.toast(s); };
     this.g.screens.showHangar(pr, {
       unlock: (id: MechId) => {
         const def = MECHS[id];
@@ -113,12 +136,14 @@ export class Menus {
         pr.selected = id;
         progress.save();
         sfx.buy();
+        if (inRun) { this.g.rebuildPlayer(def); toast(t('换装机体：{m}', { m: def.name })); }
         this.renderHangar();
       },
       select: (id: MechId) => {
         pr.selected = id;
         progress.save();
-        player.setMech(MECHS[id]);
+        if (inRun) { this.g.rebuildPlayer(MECHS[id]); toast(t('换装机体：{m}', { m: MECHS[id].name })); }
+        else player.setMech(MECHS[id]);
         sfx.pickup();
         this.renderHangar();
       },
@@ -130,6 +155,12 @@ export class Menus {
         pr.talents[id] = lvl + 1;
         progress.save();
         sfx.buy();
+        if (inRun) {
+          this.g.rebuildPlayer(player.mechDef);
+          if (id === 'funding') player.coins += 15;    // "start with shards": paid now for this run
+          if (id === 'revive') player.revives++;
+          toast(`${def.name} Lv.${lvl + 1}`);
+        }
         this.renderHangar();
       },
     });

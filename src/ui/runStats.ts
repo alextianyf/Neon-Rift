@@ -15,10 +15,10 @@ export function statLines(p: Player): StatLine[] {
   const w = p.weaponDef;
   return [
     { label: t('当前武器'), value: `${w.name} Lv.${p.activeSlot.level}` },
-    { label: t('伤害倍率'), value: `×${p.dmgMul.toFixed(2)}` },
+    { label: t('伤害倍率'), value: `×${p.dmgMul.toFixed(2)}${capped(p.dmgBonus >= CAP.dmgBonus)}` },
     { label: t('射速倍率'), value: `×${p.fireRateMul.toFixed(2)}${capped(p.fireRateMul >= CAP.fireRateMul)}` },
     { label: t('装弹时间'), value: `${p.reloadTime(w).toFixed(2)}s${capped(1 / p.reloadMul <= CAP.reloadTimeMul || p.reloadTime(w) <= CAP.reloadTime)}` },
-    { label: t('弹匣'), value: `${p.activeSlot.mag} / ${p.magSize(w.id)} · ${p.activeSlot.starter ? t('备弹无限') : t('备弹 {n}', { n: p.activeSlot.reserve })}` },
+    { label: t('弹匣'), value: `${p.activeSlot.mag} / ${p.magSize(w.id, p.activeSlot.level)} · ${p.activeSlot.starter ? t('备弹无限') : t('备弹 {n}', { n: p.activeSlot.reserve })}` },
     { label: t('暴击率 / 暴击伤害'), value: `${pct(p.critChance)}${capped(p.critChance >= CAP.critChance)} / ×${p.critMul.toFixed(1)}` },
     { label: t('点燃 / 冰冻 / 闪电'), value: `${pct(p.burnChance)} / ${pct(p.frostChance)} / ${pct(p.shockChance)}` },
     { label: t('穿透 / 反弹 / 多重'), value: `${p.pierce} / ${p.bounce} / ${p.extraShots}` },

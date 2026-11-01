@@ -1,7 +1,11 @@
 import type * as THREE from 'three';
 import { sfx } from '../core/audio';
 import { rand } from '../core/math';
-import type { EnemyKind } from '../data/enemies';
+import { ENEMIES, type EnemyKind } from '../data/enemies';
+import { HIDDEN_STATES, composeBehavior } from './enemyParts';
+import { BOSS_AI } from './bosses';
+import { extraShots } from './abyss';
+import { ENDLESS_BOSS_AI } from './bossesEndless';
 import type { Enemy } from './enemies';
 import type { Game } from './game';
 import { t } from '../core/i18n';
@@ -42,13 +46,35 @@ function kite(e: Enemy, f: AIFrame, near: number, far: number, strafe = 0.8): vo
   else desired.set(-toP.z * e.side, 0, toP.x * e.side).multiplyScalar(spd * strafe);
 }
 
+// Sniper variant: mark where its shot will ricochet off the first wall.
+function markBounce(e: Enemy, g: Game): void {
+  for (let d = 1; d < 30; d += 0.5) {
+    const x = e.pos.x + e.dir.x * d, z = e.pos.z + e.dir.z * d;
+    if (g.room.shotBlocked(x, z)) { g.ground.warn(x - e.dir.x * 0.5, z - e.dir.z * 0.5, 0.8, 0.6); return; }
+  }
+}
+
 function ring(g: Game, e: Enemy, n: number, speed: number, color: number, offset = Math.random(), y = 1.2): void {
   for (let i = 0; i < n; i++) g.projectiles.fireEnemy(e.pos, offset + (i / n) * Math.PI * 2, speed, color, y);
 }
 
-// Runs straight at the player.
-const grunt: Behavior = (_e, f) => {
+// Runs straight at the player. Variant: stops just short, then pounces.
+const grunt: Behavior = (e, f) => {
+  if (!e.variant) { f.desired.copy(f.toP).multiplyScalar(f.spd); return; }
+  e.stateT -= f.dt;
+  if (e.state === 'wind') {
+    e.charge = 1;
+    if (e.stateT <= 0) { e.state = 'charge'; e.stateT = 0.35; e.dir.copy(f.toP); }
+    return;
+  }
+  if (e.state === 'charge') {
+    f.desired.copy(e.dir).multiplyScalar(14);
+    if (e.stateT <= 0) { e.state = 'move'; e.cd = 2; }
+    return;
+  }
+  if (e.state === 'stun') { if (e.stateT <= 0) e.state = 'move'; return; }
   f.desired.copy(f.toP).multiplyScalar(f.spd);
+  if (f.dist < 3 && e.cd <= 0) { e.state = 'wind'; e.stateT = 0.3; }
 };
 
 // Darts at the player in a zigzag so packs spread out instead of moving as one blob.
@@ -63,10 +89,21 @@ const bomber: Behavior = (e, f, g) => {
   e.stateT -= f.dt;
   if (e.state === 'move') {
     f.desired.copy(f.toP).multiplyScalar(f.spd);
-    if (f.dist < 2.4) { e.state = 'fuse'; e.stateT = BOMBER_FUSE; sfx.enemyShot(); }
+    // variant: lights the fuse from further out and leaps onto where the player stands
+    if (f.dist < (e.variant ? 6 : 2.4)) {
+      e.state = 'fuse';
+      e.stateT = BOMBER_FUSE;
+      sfx.enemyShot();
+      if (e.variant) { e.dir.set(g.player.pos.x, 0, g.player.pos.z); g.ground.warn(e.dir.x, e.dir.z, 2.6, BOMBER_FUSE); }
+    }
   } else if (e.state === 'fuse') {
     e.charge = 1 - Math.max(0, e.stateT) / BOMBER_FUSE;
     e.scale = 1 + e.charge * 0.35;
+    if (e.variant) {
+      const dx = e.dir.x - e.pos.x, dz = e.dir.z - e.pos.z;
+      f.desired.set(dx, 0, dz).multiplyScalar(1 / Math.max(0.05, e.stateT));
+      e.alt = Math.sin(Math.PI * e.charge) * 2;
+    }
     if (e.stateT <= 0) g.enemies.damage(e, e.hp + 1, { dot: true });  // detonates via kill()
   }
 };
@@ -86,7 +123,10 @@ const shooter: Behavior = (e, f, g) => {
   }
   if (e.cd <= 0) {
     if (f.dist < 17) {
-      g.projectiles.fireEnemy(e.pos, Math.atan2(f.toP.x, f.toP.z), 11, 0xc77dff);
+      const a = Math.atan2(f.toP.x, f.toP.z);
+      // variant: a three-shot fan
+      for (const k of e.variant ? [-1, 0, 1] : [0]) g.projectiles.fireEnemy(e.pos, a + k * 0.22, 11, 0xc77dff);
+      for (let k = 0; k < extraShots(); k++) g.projectiles.fireEnemy(e.pos, a + (k + 1) * 0.12 * (k % 2 ? -1 : 1), 11, 0xc77dff);
       sfx.enemyShot();
     }
     e.cd = rand(1.4, 2.1);
@@ -100,7 +140,10 @@ const sniper: Behavior = (e, f, g) => {
     e.charge = 1 - Math.max(0, e.stateT) / SNIPER_AIM;
     if (e.stateT > SNIPER_LOCK) e.dir.copy(f.toP);  // track until the lock
     if (e.stateT <= 0) {
-      g.projectiles.fireEnemy(e.pos, Math.atan2(e.dir.x, e.dir.z), 32, 0xff2244, 1.0, 18);
+      // variant: the round ricochets once (the bounce point is marked)
+      if (e.variant) markBounce(e, g);
+      g.projectiles.fireEnemy(e.pos, Math.atan2(e.dir.x, e.dir.z), 32, 0xff2244, 1.0, 18, 4, { bounce: e.variant ? 1 : 0 });
+      for (let k = 0; k < extraShots(); k++) g.projectiles.fireEnemy(e.pos, Math.atan2(e.dir.x, e.dir.z) + (k + 1) * 0.08, 32, 0xff2244, 1.0, 18);
       sfx.shoot.rail();
       e.state = 'move';
       e.cd = rand(2.6, 3.4);
@@ -114,8 +157,17 @@ const sniper: Behavior = (e, f, g) => {
 // Advances behind its frontal shield (blocking is handled in projectiles). `e.dir` is where the
 // shield faces; it turns toward the player at a limited rate and the enemy walks the way it faces,
 // slowing down while it's still turning to catch up.
-const shield: Behavior = (e, f) => {
+const shield: Behavior = (e, f, g) => {
   if (e.dir.lengthSq() === 0) e.dir.copy(f.toP);
+  // variant: throws its shield like a boomerang every 6 s, and is open for 3 s after
+  e.burstT -= f.dt;
+  if (e.variant && e.cd <= 0 && f.dist < 10) {
+    e.cd = 6;
+    e.burstT = 3;
+    const a = Math.atan2(f.toP.x, f.toP.z);
+    g.projectiles.fireEnemy(e.pos, a, 0, e.def.color, 0.9, e.def.dmg, 2.2, { curve: { ox: e.pos.x, oz: e.pos.z, angle: a, reach: 8, width: 1.5 * e.side, time: 2.2 } });
+    sfx.slash();
+  }
   const cur = Math.atan2(e.dir.x, e.dir.z);
   const off = wrapAngle(Math.atan2(f.toP.x, f.toP.z) - cur);
   const step = SHIELD_TURN * (e.enraged ? 1.3 : 1) * f.dt;
@@ -130,7 +182,8 @@ const summoner: Behavior = (e, f, g) => {
   if (e.cd < 0.8) e.charge = (0.8 - e.cd) / 0.8;
   if (e.cd <= 0) {
     const a = Math.random() * Math.PI * 2, x = e.pos.x + Math.sin(a) * 2, z = e.pos.z + Math.cos(a) * 2;
-    if (!g.room.blocked(x, z, 0.5)) g.enemies.addMarker('swarmer', x, z, 0.6, e.elite ? 5 : 3);
+    // variant: calls grunts instead of a swarm
+    if (!g.room.blocked(x, z, 0.5)) g.enemies.addMarker(e.variant ? 'grunt' : 'swarmer', x, z, 0.6, e.variant ? 2 : e.elite ? 5 : 3);
     e.cd = rand(4.5, 5.5);
   }
 };
@@ -162,6 +215,13 @@ const brute: Behavior = (e, f, g) => {
   }
 };
 
+const GUARDIAN_MINIONS = 4;  // summons stop while this many grunts are alive
+const SOVEREIGN_GUARDS = 2;  // same for the Sovereign's elite guards
+
+function alive(g: Game, kind: EnemyKind, elite: boolean): number {
+  return g.enemies.list.filter(x => x.kind === kind && x.elite === elite && x.hp > 0).length;
+}
+
 // Guardian: cycles ring burst -> aimed volleys -> summon minions. Faster and denser below 50% HP.
 const boss: Behavior = (e, f, g) => {
   const { toP, dist, spd, desired } = f;
@@ -179,7 +239,8 @@ const boss: Behavior = (e, f, g) => {
       e.burst = e.enraged ? 5 : 3;
       e.burstT = 0;
     } else {
-      for (let i = 0, n = e.enraged ? 4 : 3; i < n; i++) {
+      // never more than GUARDIAN_MINIONS of them alive, so clearing them can't fall behind
+      for (let i = 0, n = Math.min(e.enraged ? 3 : 2, GUARDIAN_MINIONS - alive(g, 'grunt', false)); i < n; i++) {
         const a = Math.random() * Math.PI * 2, x = e.pos.x + Math.sin(a) * 4, z = e.pos.z + Math.cos(a) * 4;
         if (!g.room.blocked(x, z, 0.7)) g.enemies.addMarker('grunt', x, z, 0.8);
       }
@@ -297,7 +358,7 @@ const boss3: Behavior = (e, f, g) => {
       e.stateT = 0.6;
       g.fx.shockwave(e.pos.x, e.pos.z, 4, e.def.color);
     } else {
-      for (let i = 0; i < 2; i++) {
+      for (let i = 0, n = Math.min(2, SOVEREIGN_GUARDS - alive(g, 'grunt', true)); i < n; i++) {
         const [x, z] = g.room.findSpawn(g.player.pos, 6, 0.7);
         g.enemies.addMarker('grunt', x, z, 0.9, 1, true);
       }
@@ -306,9 +367,15 @@ const boss3: Behavior = (e, f, g) => {
   }
 };
 
-export const BEHAVIORS: Record<EnemyKind, Behavior> = {
-  grunt, swarmer, bomber, splitter, shooter, sniper, shield, summoner, brute, boss, boss2, boss3,
+const HAND_WRITTEN: Partial<Record<EnemyKind, Behavior>> = {
+  grunt, swarmer, bomber, splitter, shooter, sniper, shield, summoner, brute, boss, boss2, boss3, ...BOSS_AI, ...ENDLESS_BOSS_AI,
 };
 
-// Enemies that can't be hit right now (sovereign phasing through a rift).
-export const untargetable = (e: Enemy): boolean => e.state === 'tpout' || e.state === 'tpin';
+// Newer enemies are assembled from parts (see enemyParts.ts).
+export const BEHAVIORS = Object.fromEntries((Object.keys(ENEMIES) as EnemyKind[]).map(k => {
+  const parts = ENEMIES[k].parts;
+  return [k, parts ? composeBehavior(parts) : HAND_WRITTEN[k]!];
+})) as Record<EnemyKind, Behavior>;
+
+// Enemies that can't be hit right now (sovereign phasing through a rift, a burrower underground).
+export const untargetable = (e: Enemy): boolean => e.state === 'tpout' || e.state === 'tpin' || HIDDEN_STATES.has(e.state);

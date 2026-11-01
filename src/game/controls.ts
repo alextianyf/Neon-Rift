@@ -32,6 +32,9 @@ export function bindControls(g: Game): void {
         if (b === 'start' || b === 'b') g.setPaused(false);
         else if (b === 'back') click('quitBtn');
         break;
+      case 'hangar':
+        if (b === 'b' || b === 'x') g.menus.closeHangar();
+        break;
       case 'upgrade':
         if (b === 'x') g.sector.pickUpgrade(0);
         else if (b === 'y') g.sector.pickUpgrade(1);
@@ -74,6 +77,8 @@ export function bindControls(g: Game): void {
       } else if (g.state === 'portal' && !repeat) {
         if (k === 'e' || k === 'enter') g.sector.answerPortal(true);
         else if (k === 'escape') g.sector.answerPortal(false);
+      } else if (g.state === 'hangar' && !repeat && (k === 'escape' || k === 'e')) {
+        g.menus.closeHangar();
       } else if (g.state === 'paused' && (k === 'escape' || k === 'p')) {
         g.setPaused(false);
       } else if (g.state === 'upgrade' && /^[1-9]$/.test(k)) {

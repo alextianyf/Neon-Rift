@@ -4,6 +4,7 @@ import { sfx } from '../core/audio';
 import { rand } from '../core/math';
 import { rnd, rrand } from '../core/rng';
 import { BALANCE } from '../data/balance';
+import { enemyHpMul } from '../data/scaling';
 import { isCombatKind } from '../data/map';
 import type { AABB } from './room';
 import type { Game } from './game';
@@ -340,6 +341,7 @@ export class Hazards {
     const pos = new THREE.Vector3(b.x, 0, b.z);
     g.projectiles.explode(pos, H.barrelRadius, H.barrelDmg * (1 + (room.n - 1) * 0.08), BARREL_COLOR);
     if (Math.hypot(g.player.pos.x - b.x, g.player.pos.z - b.z) < H.barrelRadius) g.damagePlayer(H.barrelPlayerDmg, pos);
+    if (Math.random() < BALANCE.orbs.barrel) g.pickups.spawnOrb(b.x, b.z);
   }
 
   // A fence between two pylons across open floor; skipped if no clear line is found.
@@ -449,6 +451,7 @@ export class Hazards {
     if (c.hp > 0) return;
     this.g.fx.burst({ x: c.x, y: 0.6, z: c.z }, COVER_COLOR, 18, 6, 0.2, 0.6);
     sfx.kill();
+    if (Math.random() < BALANCE.orbs.cover) this.g.pickups.spawnOrb(c.x, c.z);
     this.removeCover(c);
     this.covers.splice(this.covers.indexOf(c), 1);
   }
@@ -461,7 +464,7 @@ export class Hazards {
   }
 
   private addRift(x: number, z: number): void {
-    const hp = H.riftHp * (1 + (this.g.room.n - 1) * BALANCE.scaling.enemyHpPerRoom);
+    const hp = H.riftHp * enemyHpMul(this.g.room.n);
     // opens over ~1s and then stays open until destroyed
     const rift = new Rift(this.g.gfx.scene, x, z, 3.2, 1, RIFT_COLOR);
     this.rifts.push({ x, z, hp, maxHp: hp, rift, spawnT: 2.5, closed: false });
@@ -476,6 +479,7 @@ export class Hazards {
     g.fx.shake(0.5);
     sfx.boom();
     g.pickups.spawnCoins(r.x, r.z, H.riftReward);
+    for (let i = 0; i < BALANCE.orbs.rift; i++) g.pickups.spawnOrb(r.x + rand(-1.2, 1.2), r.z + rand(-1.2, 1.2));
     g.score += 60;
     g.hud.toast(t('不稳定裂缝已封闭'));
   }

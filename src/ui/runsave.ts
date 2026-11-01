@@ -1,3 +1,8 @@
+import type { BossLogEntry } from '../data/bossPlan';
+import type { LawId, MutationId } from '../game/abyss';
+import type { FusionSpec } from '../game/fusion';
+import type { BoonId } from '../game/epoch';
+import { storageKey } from '../core/testMode';
 import type { RoomKind } from '../data/map';
 import type { MechId } from '../data/meta';
 import type { WeaponSlot } from '../game/player';
@@ -27,9 +32,14 @@ export interface RunSave {
   slots: WeaponSlot[];
   weapon: number;
   upgrades: string[];   // ids in the order they were taken
+  bosses?: BossLogEntry[];  // bosses fought so far (older saves don't have it)
+  mutations?: MutationId[];
+  law?: LawId | null;
+  fusions?: FusionSpec[];
+  boons?: BoonId[];
 }
 
-const KEY = 'neonrift.run';
+const KEY = storageKey('neonrift.run');
 
 export function loadRun(): RunSave | null {
   try {

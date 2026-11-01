@@ -8,7 +8,7 @@ export interface PointLike {
   z: number;
 }
 
-type ParticleKind = 'bit' | 'ring' | 'line' | 'derez';
+type ParticleKind = 'bit' | 'ring' | 'line' | 'derez' | 'mote' | 'beam';
 
 interface Particle {
   kind: ParticleKind;
@@ -48,6 +48,33 @@ export class Effects {
       vel.set(Math.sin(a) * s, rand(1, 5), Math.cos(a) * s);
       this.particles.push({ kind: 'bit', obj: m, vel, life, max: life, size: sz });
     }
+  }
+
+  // A glowing speck that hangs in place and shrinks away: projectile trails.
+  mote(pos: PointLike, hex: number, size = 0.15, life = 0.3): void {
+    if (this.particles.length >= MAX_PARTICLES) return;
+    const pooled = this.bitPool.pop();
+    const m = pooled?.obj ?? new THREE.Mesh(GEO.particle, glowMat(hex));
+    const vel = pooled?.vel ?? new THREE.Vector3();
+    if (pooled) { m.material = glowMat(hex); m.visible = true; } else this.scene.add(m);
+    m.position.set(pos.x, pos.y ?? 1, pos.z);
+    m.rotation.set(Math.random() * 3, Math.random() * 3, 0);
+    m.scale.setScalar(size);
+    vel.set(0, 0, 0);
+    this.particles.push({ kind: 'mote', obj: m, vel, life, max: life, size });
+  }
+
+  // A straight glowing bar from a to b that fades out (rail afterglow).
+  beam(a: PointLike, b: PointLike, hex: number, width = 0.12, life = 0.3): void {
+    const dx = b.x - a.x, dz = b.z - a.z, len = Math.hypot(dx, dz);
+    if (len < 0.01) return;
+    const mat = new THREE.MeshBasicMaterial({ color: new THREE.Color(hex).multiplyScalar(1.2), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending });
+    const m = new THREE.Mesh(GEO.particle, mat);
+    m.position.set((a.x + b.x) / 2, a.y ?? 1.4, (a.z + b.z) / 2);
+    m.rotation.y = Math.atan2(dx, dz);
+    m.scale.set(width, width, len);
+    this.scene.add(m);
+    this.particles.push({ kind: 'beam', obj: m, vel: new THREE.Vector3(), life, max: life, size: width });
   }
 
   shockwave(x: number, z: number, radius: number, color: number): void {
@@ -120,6 +147,11 @@ export class Effects {
         (p.obj.material as THREE.MeshBasicMaterial).opacity = k;
       } else if (p.kind === 'line') {
         (p.obj.material as THREE.LineBasicMaterial).opacity = k;
+      } else if (p.kind === 'mote') {
+        p.obj.scale.setScalar(p.size * k);
+      } else if (p.kind === 'beam') {
+        (p.obj.material as THREE.MeshBasicMaterial).opacity = k * k;
+        p.obj.scale.x = p.obj.scale.y = p.size * (0.4 + 0.6 * k);
       } else if (p.kind === 'derez' && p.base) {
         const spread = 1 + (1 - k) * 0.9;
         p.obj.scale.set(p.base.x * spread, p.base.y * Math.max(0.05, k * k), p.base.z * spread);
@@ -146,14 +178,15 @@ export class Effects {
   }
 
   private remove(p: Particle): void {
-    if (p.kind === 'bit') {
+    if (p.kind === 'bit' || p.kind === 'mote') {
       p.obj.visible = false;
       this.bitPool.push({ obj: p.obj as THREE.Mesh, vel: p.vel });
       return;
     }
     this.scene.remove(p.obj);
     // derez ghosts share the enemy's geometry, so only their material is theirs
-    if (p.kind === 'ring' || p.kind === 'derez') (p.obj.material as THREE.Material).dispose();
+    // beams share the particle box geometry, so only their material is theirs too
+    if (p.kind === 'ring' || p.kind === 'derez' || p.kind === 'beam') (p.obj.material as THREE.Material).dispose();
     if (p.kind === 'line') {
       p.obj.geometry.dispose();
       (p.obj.material as THREE.Material).dispose();

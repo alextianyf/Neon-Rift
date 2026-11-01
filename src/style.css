@@ -48,6 +48,17 @@ canvas { display: block; cursor: none; }
 #cross.reloading { --c: var(--gold); }
 #cross.reloading > i { animation: crossSpin .7s linear infinite; }
 #cross.reloading::before { opacity: 1; }
+/* pulse rifle: one pip per shot toward the charged one; all lit = the next shot is charged */
+#pips { position: absolute; left: 50%; top: 100%; margin-top: 6px; transform: translateX(-50%); display: none; gap: 4px; }
+#cross.pulse #pips { display: flex; }
+#pips i { width: 5px; height: 5px; background: rgba(79, 240, 255, .25); }
+#pips i.on { background: var(--cyan); }
+#pips.ready i { background: #fff; box-shadow: 0 0 6px #fff; }
+/* rail charge (white, brackets close in) and flame heat (orange to white) reuse the same ring */
+#cross.charging { --c: #fff; }
+#cross.charging::before { opacity: 1; background: conic-gradient(#fff calc(var(--rp, 0) * 360deg), rgba(255, 255, 255, .15) 0); }
+#cross.charging > i { scale: calc(1 - var(--rp, 0) * 0.35); }
+#cross.heating::before { opacity: 1; background: conic-gradient(color-mix(in srgb, #ff7a2a, #fff calc(var(--rp, 0) * 70%)) calc(var(--rp, 0) * 360deg), rgba(255, 255, 255, .1) 0); }
 @keyframes crossSpin { from { rotate: 0deg; } to { rotate: 360deg; } }
 @keyframes crossPop { from { scale: 1.45; } to { scale: 1; } }
 
@@ -117,6 +128,11 @@ button.mini:disabled { background: rgba(255, 255, 255, .15); color: rgba(255, 25
 
 /* combo */
 /* gauge under the mech: dash recharge + skill time */
+/* elite affix names floating above the enemy */
+#tags { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+#tags .etag { position: absolute; left: 0; top: 0; white-space: nowrap; font-size: 11px; font-weight: 700; letter-spacing: 1px; text-shadow: 0 0 4px #000, 0 0 2px #000; }
+#tags .etag i { font-style: normal; }
+#tags .etag i + i::before { content: ' · '; color: rgba(255, 255, 255, .5); }
 #mechGauge { position: absolute; left: 0; top: 0; width: 64px; margin-left: -32px; display: flex; flex-direction: column; align-items: center; gap: 3px; }
 #mechGauge .gdash { width: 100%; height: 4px; background: rgba(4, 7, 14, .75); border: 1px solid rgba(79, 240, 255, .35); opacity: 0; transition: opacity .15s; }
 #mechGauge .gdash > div { height: 100%; background: var(--cyan); box-shadow: 0 0 6px var(--cyan); }
@@ -189,6 +205,8 @@ button.mini:disabled { background: rgba(255, 255, 255, .15); color: rgba(255, 25
 @keyframes glitchIn { 0% { clip-path: inset(40% 0 30% 0); translate: -6px 0; } 50% { clip-path: inset(0 0 60% 0); translate: 5px 0; } 100% { clip-path: inset(0); translate: 0; } }
 
 /* damage feedback */
+#dark { position: fixed; inset: 0; pointer-events: none; z-index: 2; opacity: 0; transition: opacity .4s;
+  background: radial-gradient(circle at var(--x, 50%) var(--y, 50%), transparent var(--r, 300px), rgba(2, 3, 8, .95) calc(var(--r, 300px) + 160px)); }
 #vignette { position: fixed; inset: 0; pointer-events: none; z-index: 3; opacity: 0; transition: opacity .25s;
   background: radial-gradient(ellipse at center, transparent 45%, rgba(255, 20, 60, .55) 100%); }
 #vignette.blue { background: radial-gradient(ellipse at center, transparent 45%, rgba(80, 180, 255, .55) 100%); }
@@ -359,3 +377,13 @@ canvas { touch-action: none; }
 
 #langBtn { position: absolute; top: 16px; right: 18px; padding: 5px 12px; font-family: var(--font-num); letter-spacing: 2px; }
 #version { position: absolute; right: 18px; bottom: 12px; font-family: var(--font-num); font-size: 11px; letter-spacing: 2px; color: rgba(219, 231, 255, .45); pointer-events: none; }
+
+/* test link panel (?test) */
+#testToggle { position: absolute; left: 50%; top: 8px; transform: translateX(-50%); z-index: 60; padding: 3px 10px; font-family: var(--font-num); font-size: 10px; letter-spacing: 2px; cursor: pointer; opacity: .7; }
+#testPanel { position: absolute; left: 50%; top: 36px; transform: translateX(-50%); z-index: 60; padding: 10px 12px; background: var(--panel); border: 1px solid var(--cyan-dim); clip-path: var(--notch); font-size: 13px; cursor: auto; user-select: none; }
+#testPanel .tp-head { font-family: var(--font-num); font-size: 11px; letter-spacing: 2px; color: var(--cyan); margin-bottom: 6px; }
+#testPanel .tp-row { display: flex; align-items: center; gap: 6px; margin: 5px 0; flex-wrap: wrap; }
+#testPanel input[type=number] { width: 56px; }
+#testPanel input, #testPanel select { background: rgba(0, 0, 0, .5); color: var(--text); border: 1px solid var(--cyan-dim); font: inherit; padding: 2px 4px; }
+#testPanel .mini { cursor: pointer; }
+#testPanel .tp-note { font-size: 11px; margin-top: 4px; }
