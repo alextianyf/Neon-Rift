@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { disposeTree } from '../core/assets';
+import { disposeTree, markShared } from '../core/assets';
 import { clamp } from '../core/math';
 import { rnd, rrand } from '../core/rng';
 import { BALANCE } from '../data/balance';
@@ -38,6 +38,23 @@ const PORTAL_RADIUS = 1.4;
 
 function edgeLines(geo: THREE.BufferGeometry, color: THREE.Color): THREE.LineSegments {
   return new THREE.LineSegments(new THREE.EdgesGeometry(geo), new THREE.LineBasicMaterial({ color }));
+}
+
+// Horizontal falloff (bright center line, soft fade to both sides) for the wall halo strips. Shared.
+let halo: THREE.Texture | null = null;
+function haloTexture(): THREE.Texture {
+  if (halo) return halo;
+  const c = document.createElement('canvas');
+  c.width = 4; c.height = 64;
+  const ctx = c.getContext('2d')!;
+  const img = ctx.createImageData(4, 64);
+  for (let y = 0; y < 64; y++) {
+    const a = Math.round(255 * Math.exp(-((((y + 0.5) / 64 - 0.5) / 0.2) ** 2)));
+    for (let x = 0; x < 4; x++) img.data.set([255, 255, 255, a], (y * 4 + x) * 4);
+  }
+  ctx.putImageData(img, 0, 0);
+  halo = markShared(new THREE.CanvasTexture(c));
+  return halo;
 }
 
 function pick<T>(weights: [T, number][]): T {
@@ -123,13 +140,15 @@ export class Room {
     g.add(new THREE.LineSegments(grid, new THREE.LineBasicMaterial({ color: theme.clone().multiplyScalar(0.16) })));
 
     const wallMat = new THREE.MeshStandardMaterial({ color: 0x15131f, roughness: 0.7 });
-    // Edge glow is set by luminance, not a fixed multiplier, so warm themes (much brighter per unit)
-    // don't glare while cool ones still glow; capped so deep blues don't wash out to white.
-    // Bloom starts at 0.72: the walls glow as neon, the pillars just a little.
-    const lum = 0.2126 * theme.r + 0.7152 * theme.g + 0.0722 * theme.b;
-    const glow = (target: number, cap: number) => theme.clone().multiplyScalar(Math.min(cap, target / lum));
-    const edgeCol = glow(0.9, 3);
-    const wallEdgeCol = glow(1.35, 4);
+    // Neon edges are set by luminance (warm themes are far brighter per unit than cool ones) and kept
+    // below the bloom threshold (0.72). Bloom works at half resolution, so a 1px line near the threshold
+    // blooms or not depending on which pixel it lands on, and the glow flickers as the camera moves.
+    // The steady halo comes from the soft strips in addWallHalo() instead. Edge + halo stays under ~0.6.
+    // Same luma weights as three's LuminosityHighPassShader, which decides what blooms.
+    const lum = 0.299 * theme.r + 0.587 * theme.g + 0.114 * theme.b;
+    const glow = (target: number) => theme.clone().multiplyScalar(target / lum);
+    const edgeCol = glow(0.4);
+    const wallEdgeCol = glow(0.42);
     const block = (x: number, z: number, w: number, d: number, h: number, edge = edgeCol) => {
       const geo = new THREE.BoxGeometry(w, h, d);
       const m = new THREE.Mesh(geo, wallMat);
@@ -145,6 +164,7 @@ export class Room {
       block(x, z, w, d, 1.6, wallEdgeCol);
       this.obstacles.pop();
     }
+    this.addWallHalo(g, glow);
 
     // layout features
     if (this.layout === 'pit') {
@@ -358,11 +378,32 @@ export class Room {
     // nested rims that dim toward the middle fake the depth of the abyss
     for (let i = 0; i < 5; i++) {
       const k = 1 - i * 0.12;
-      const rim = edgeLines(new THREE.BoxGeometry(w * k, 0.01, d * k), new THREE.Color(0xb455ff).multiplyScalar(i === 0 ? 3 : 1.2 - i * 0.22));
+      const rim = edgeLines(new THREE.BoxGeometry(w * k, 0.01, d * k), new THREE.Color(0xb455ff).multiplyScalar(i === 0 ? 2 : 1.2 - i * 0.22));
       rim.position.set(x, 0.03, z);
       g.add(rim);
     }
     this.obstacles.push({ x0: x - w / 2, x1: x + w / 2, z0: z - d / 2, z1: z + d / 2, low: true });
+  }
+
+  // Soft neon halo along the inner edge of the outer walls: one strip on the wall top and one spilling
+  // onto the floor. Additive, but dim enough (with the edge line on top) to stay under the bloom threshold.
+  private addWallHalo(g: THREE.Group, glow: (target: number) => THREE.Color): void {
+    const { hw, hh } = this;
+    const top = new THREE.MeshBasicMaterial({ map: haloTexture(), color: glow(0.17), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending });
+    const floor = new THREE.MeshBasicMaterial({ map: haloTexture(), color: glow(0.14), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending });
+    // [center x, center z, length, along x?] for the inner top edge of each wall
+    const edges: [number, number, number, boolean][] = [
+      [0, -hh + 0.5, hw * 2 - 1, true], [0, hh - 0.5, hw * 2 - 1, true],
+      [-hw + 0.5, 0, hh * 2 - 1, false], [hw - 0.5, 0, hh * 2 - 1, false],
+    ];
+    for (const [x, z, len, alongX] of edges) {
+      for (const [mat, y, width] of [[top, 1.61, 0.9], [floor, 0.02, 2.4]] as const) {
+        const strip = new THREE.Mesh(new THREE.PlaneGeometry(len, width), mat);
+        strip.rotation.set(-Math.PI / 2, 0, alongX ? 0 : Math.PI / 2);
+        strip.position.set(x, y, z);
+        g.add(strip);
+      }
+    }
   }
 
   private dispose(): void {
