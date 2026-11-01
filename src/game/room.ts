@@ -123,9 +123,13 @@ export class Room {
     g.add(new THREE.LineSegments(grid, new THREE.LineBasicMaterial({ color: theme.clone().multiplyScalar(0.16) })));
 
     const wallMat = new THREE.MeshStandardMaterial({ color: 0x15131f, roughness: 0.7 });
-    // obstacles glow brighter than the outer walls, which only need to read as a boundary
-    const edgeCol = theme.clone().multiplyScalar(2.4);
-    const wallEdgeCol = theme.clone().multiplyScalar(1.6);
+    // Edge glow is set by luminance, not a fixed multiplier, so warm themes (much brighter per unit)
+    // don't glare while cool ones still glow; capped so deep blues don't wash out to white.
+    // Bloom starts at 0.72: the walls glow as neon, the pillars just a little.
+    const lum = 0.2126 * theme.r + 0.7152 * theme.g + 0.0722 * theme.b;
+    const glow = (target: number, cap: number) => theme.clone().multiplyScalar(Math.min(cap, target / lum));
+    const edgeCol = glow(0.9, 3);
+    const wallEdgeCol = glow(1.35, 4);
     const block = (x: number, z: number, w: number, d: number, h: number, edge = edgeCol) => {
       const geo = new THREE.BoxGeometry(w, h, d);
       const m = new THREE.Mesh(geo, wallMat);

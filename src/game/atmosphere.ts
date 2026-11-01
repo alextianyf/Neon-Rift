@@ -4,7 +4,7 @@ import { rand } from '../core/math';
 import type { Room } from './room';
 
 // Purely visual ambience for a room: drifting rift fog, floating data motes, data pulses
-// running along the floor grid, rift scars on the floor, a glow under the player, and
+// running along the floor grid, a glow under the player, and
 // wireframe debris floating in the void outside the walls. Nothing here affects gameplay.
 
 const RIFT_PURPLE = 0x7a3cff;
@@ -56,7 +56,6 @@ export class Atmosphere {
   private fog: FogPatch[] = [];
   private pulses: Pulse[] = [];
   private debris: Debris[] = [];
-  private scars: THREE.LineBasicMaterial[] = [];
   private motes: THREE.Points | null = null;
   private moteSpeed: Float32Array = new Float32Array(0);
   private playerGlow: THREE.Mesh | null = null;
@@ -114,22 +113,6 @@ export class Atmosphere {
       this.resetPulse(p, true);
       g.add(mesh);
       this.pulses.push(p);
-    }
-
-    // rift scars: glowing jagged cracks on the floor
-    for (let i = 0; i < 4 + Math.floor(Math.random() * 3); i++) {
-      const pts: THREE.Vector3[] = [];
-      let x = rand(-hw + 2, hw - 2), z = rand(-hh + 2, hh - 2), a = rand(0, Math.PI * 2);
-      for (let k = 0; k < 7; k++) {
-        pts.push(new THREE.Vector3(x, 0.025, z));
-        a += rand(-0.9, 0.9);
-        const step = rand(0.4, 0.9);
-        x += Math.cos(a) * step;
-        z += Math.sin(a) * step;
-      }
-      const mat = new THREE.LineBasicMaterial({ color: new THREE.Color(0xb455ff).multiplyScalar(1.6), transparent: true, opacity: 0.8 });
-      g.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), mat));
-      this.scars.push(mat);
     }
 
     // soft light pool under the player
@@ -193,9 +176,6 @@ export class Atmosphere {
       if (Math.abs(m.x) > hw || Math.abs(m.z) > hh) this.resetPulse(p, false);
     }
 
-    const flicker = 0.55 + 0.35 * Math.sin(time * 3) + (Math.random() < 0.03 ? 0.4 : 0);
-    for (const s of this.scars) s.opacity = flicker;
-
     if (this.playerGlow) this.playerGlow.position.set(player.x, 0.015, player.z);
 
     for (const d of this.debris) {
@@ -232,7 +212,6 @@ export class Atmosphere {
     this.fog = [];
     this.pulses = [];
     this.debris = [];
-    this.scars = [];
     this.motes?.geometry.dispose();
     (this.motes?.material as THREE.Material | undefined)?.dispose();
     this.motes = null;
