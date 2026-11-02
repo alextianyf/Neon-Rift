@@ -1,6 +1,6 @@
 import { TEST, storageKey } from '../core/testMode';
 import { MAX_DEPTH } from '../data/depth';
-import type { MechId, TalentId } from '../data/meta';
+import { DEFAULT_MECH, type MechId, type TalentId } from '../data/meta';
 
 // Persistent player profile (localStorage): crystals, unlocks, talents, run history.
 export interface Profile {
@@ -33,12 +33,15 @@ export interface RunRecord {
 }
 
 const KEY = storageKey('neonrift.profile');
-const DEFAULT: Profile = { crystals: TEST ? 99999 : 0, mechs: TEST ? ['vanguard', 'bastion', 'phantom'] : ['vanguard'], selected: 'vanguard', talents: {}, depth: 0, maxDepth: TEST ? MAX_DEPTH : 0, wins: 0, seen: [], codex: { enemies: [], weapons: [], upgrades: [] }, history: [], totals: { runs: 0, kills: 0, time: 0 } };
+const DEFAULT: Profile = { crystals: TEST ? 99999 : 0, mechs: TEST ? ['bastion', 'vanguard', 'phantom', 'apex'] : [DEFAULT_MECH], selected: DEFAULT_MECH, talents: {}, depth: 0, maxDepth: TEST ? MAX_DEPTH : 0, wins: 0, seen: [], codex: { enemies: [], weapons: [], upgrades: [] }, history: [], totals: { runs: 0, kills: 0, time: 0 } };
 
 export function loadProfile(): Profile {
   try {
     const p = JSON.parse(localStorage.getItem(KEY) ?? 'null') as Partial<Profile> | null;
-    return { ...DEFAULT, ...p, talents: { ...(p?.talents ?? {}) }, seen: [...(p?.seen ?? [])], mechs: [...(p?.mechs ?? DEFAULT.mechs)],
+    // the default mech is always owned (older profiles started with a different one)
+    const mechs = [...(p?.mechs ?? DEFAULT.mechs)];
+    if (!mechs.includes(DEFAULT_MECH)) mechs.unshift(DEFAULT_MECH);
+    return { ...DEFAULT, ...p, talents: { ...(p?.talents ?? {}) }, seen: [...(p?.seen ?? [])], mechs,
       codex: { enemies: [...(p?.codex?.enemies ?? [])], weapons: [...(p?.codex?.weapons ?? [])], upgrades: [...(p?.codex?.upgrades ?? [])] },
       history: [...(p?.history ?? [])], totals: { ...DEFAULT.totals, ...(p?.totals ?? {}) } };
   } catch {

@@ -3,7 +3,7 @@ import { GEO, disposeTree, glowMat, markShared } from '../core/assets';
 import { sfx } from '../core/audio';
 import { shuffledR } from '../core/rng';
 import { BALANCE } from '../data/balance';
-import { RARITY_LABEL, RARITY_PRICE, ROLL_WEIGHTS, rollUpgrades, type UpgradeDef } from '../data/upgrades';
+import { RARITY_COLOR, RARITY_LABEL, RARITY_PRICE, ROLL_WEIGHTS, rollUpgrades, type UpgradeDef } from '../data/upgrades';
 import { MAX_WEAPON_LEVEL, WEAPONS, type WeaponId } from '../data/weapons';
 import type { Tag } from '../ui/floaters';
 import type { Game } from './game';
@@ -28,7 +28,6 @@ interface Item {
 }
 
 const REACH = 1.8;
-const RARITY_COLOR = { common: 0x9fb4ff, rare: 0xc77dff, legendary: 0xffc83d } as const;
 const PEDESTAL_GEO = markShared(new THREE.CylinderGeometry(0.75, 0.9, 0.7, 16));
 
 function offerColor(o: Offer): number {

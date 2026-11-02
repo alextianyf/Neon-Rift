@@ -5,7 +5,7 @@ import { AFFIXES, type AffixId } from '../data/affixes';
 import { VARIANTS } from '../data/variants';
 import { ensureFusion } from '../game/fusion';
 import { ENEMIES, type EnemyKind } from '../data/enemies';
-import { RARITY_LABEL, UPGRADES, type UpgradeDef } from '../data/upgrades';
+import { RARITY_COLOR, RARITY_LABEL, UPGRADES, type UpgradeDef } from '../data/upgrades';
 import { WEAPONS, type WeaponId } from '../data/weapons';
 import { weaponIcon } from './icons';
 import { talentLevel, type CodexKind, type Profile } from './profile';
@@ -285,40 +285,43 @@ export class Screens {
     mechList.innerHTML = '';
     for (const def of Object.values(MECHS)) {
       const owned = profile.mechs.includes(def.id), selected = profile.selected === def.id;
-      const accent = `#${def.palette.accent.toString(16).padStart(6, '0')}`;
-      const row = document.createElement('div');
-      row.className = `mechrow${selected ? ' selected' : ''}`;
-      row.style.setProperty('--mc', accent);
-      const stats = t('生命 {hp} · 速度 {sp} · 冲刺冷却 {dc}s', { hp: def.hp, sp: def.speed, dc: +(BALANCE.player.dashCooldown * def.dashCdMul).toFixed(2) }) +
-        (def.critBonus ? t(' · 暴击 +{n}%', { n: def.critBonus * 100 }) : '') +
-        (def.shield ? t(' · 每扇区护盾 {n}', { n: def.shield }) : '');
-      row.innerHTML =
-        `<div class="mhead"><b>${def.name}</b><span class="dim">${def.desc}</span></div>` +
-        `<div class="mstats">${stats}</div>` +
-        `<div class="mstats">${t('初始武器：{w}（弹药无限，不可丢弃）', { w: WEAPONS[def.starter].name })}</div>` +
-        `<div class="mskill">${t('技能 [F] <b>{name}</b>：{desc}（冷却 {cd}s）', { name: def.skillName, desc: def.skillDesc, cd: def.skillCd })}</div>`;
+      const card = document.createElement('div');
+      card.className = `mcard${selected ? ' selected' : ''}${owned ? '' : ' locked'}`;
+      card.style.setProperty('--rc', `#${RARITY_COLOR[def.rarity].toString(16).padStart(6, '0')}`);
+      const stat = (label: string, value: string | number) => `<span><i>${label}</i>${value}</span>`;
+      card.innerHTML =
+        `<div class="mtop"><b>${def.name}</b><span class="rtag">${RARITY_LABEL[def.rarity]}</span></div>` +
+        `<div class="mdesc">${def.desc}</div>` +
+        `<div class="mstat">${stat(t('生命'), def.hp)}${stat(t('速度'), def.speed)}${stat(t('冲刺'), `${+(BALANCE.player.dashCooldown * def.dashCdMul).toFixed(2)}s`)}` +
+        (def.critBonus ? stat(t('暴击'), `+${def.critBonus * 100}%`) : '') + (def.shield ? stat(t('每扇区护盾'), def.shield) : '') + `</div>` +
+        `<div class="mline"><i>${t('初始武器')}</i>${WEAPONS[def.starter].name}</div>` +
+        `<div class="mskill"><div><i>${t('技能 F')}</i><b>${def.skillName}</b><span class="dim">${t('冷却 {n}s', { n: def.skillCd })}</span></div>${def.skillDesc}</div>` +
+        (def.killCdEvery ? `<div class="mline"><i>${t('被动')}</i>${t('每击杀 {n} 个敌人，技能冷却 -1 秒', { n: def.killCdEvery })}</div>` : '');
       const btn = document.createElement('button');
       btn.className = 'mini';
       if (selected) { btn.textContent = t('已选择'); btn.disabled = true; }
       else if (owned) { btn.textContent = t('选择'); btn.onclick = () => act.select(def.id); }
+      else if (def.needsWin && profile.wins < 1) { btn.textContent = t('需打过第 15 扇区 · {n} 结晶', { n: def.cost }); btn.disabled = true; }
       else { btn.textContent = t('解锁 · {n} 结晶', { n: def.cost }); btn.disabled = profile.crystals < def.cost; btn.onclick = () => act.unlock(def.id); }
-      row.appendChild(btn);
-      mechList.appendChild(row);
+      card.appendChild(btn);
+      mechList.appendChild(card);
     }
     const talentList = $('talentList');
     talentList.innerHTML = '';
     for (const tal of TALENTS) {
       const lvl = talentLevel(profile, tal.id), maxed = lvl >= tal.max;
-      const row = document.createElement('div');
-      row.className = 'talentrow';
+      const card = document.createElement('div');
+      card.className = `tcard${maxed ? ' maxed' : ''}`;
       const pips = Array.from({ length: tal.max }, (_, i) => `<i class="${i < lvl ? 'on' : ''}"></i>`).join('');
-      row.innerHTML = `<div><b>${tal.name}</b> <span class="pips">${pips}</span><div class="dim">${tal.desc(Math.max(lvl, 1))}</div></div>`;
+      card.innerHTML = `<div class="ttop"><b>${tal.name}</b><span class="pips">${pips}</span></div>` +
+        `<div class="tnow">${lvl ? tal.desc(lvl) : t('未升级')}</div>` +
+        `<div class="tnext">${maxed ? t('已满级') : `${t('下一级')}：${tal.desc(lvl + 1)}`}</div>`;
       const btn = document.createElement('button');
       btn.className = 'mini';
       if (maxed) { btn.textContent = t('已满级'); btn.disabled = true; }
       else { const c = tal.cost(lvl); btn.textContent = t('{n} 结晶', { n: c }); btn.disabled = profile.crystals < c; btn.onclick = () => act.buy(tal.id); }
-      row.appendChild(btn);
-      talentList.appendChild(row);
+      card.appendChild(btn);
+      talentList.appendChild(card);
     }
   }
 

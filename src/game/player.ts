@@ -10,7 +10,8 @@ import type { Enemy } from './enemies';
 import { untargetable } from './enemyAI';
 import type { Game } from './game';
 import { MechModel } from './mech';
-import { MECHS, type MechDef, type TalentId } from '../data/meta';
+import { DEFAULT_MECH, MECHS, type MechDef, type TalentId } from '../data/meta';
+import { CLONES } from './clones';
 import { t } from '../core/i18n';
 
 const P = BALANCE.player;
@@ -20,6 +21,14 @@ const raycaster = new THREE.Raycaster();
 const aimPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -1.45);
 const aimPoint = new THREE.Vector3();
 const moveDir = new THREE.Vector3();
+
+// Legendary skill "轨道湮灭" (orbital strike).
+const ORBITAL = { warn: 1, seconds: 6, invuln: 1 };
+const ndc = new THREE.Vector3();
+function onScreen(pos: THREE.Vector3, g: Game): boolean {
+  ndc.set(pos.x, 0.5, pos.z).project(g.gfx.camera);
+  return Math.abs(ndc.x) <= 1.05 && Math.abs(ndc.y) <= 1.05;
+}
 // Height the eye treats as the mech's center on screen, and where its cannons point from.
 const VISUAL_CENTER_Y = 1.0;
 const CANNON_Y = 1.45;
@@ -52,13 +61,15 @@ export class Player {
   private readonly ring: THREE.Mesh<THREE.RingGeometry, THREE.MeshBasicMaterial>;
   private readonly shieldBubble: THREE.Mesh<THREE.SphereGeometry, THREE.MeshBasicMaterial>;
   private mech = new MechModel();
-  mechDef: MechDef = MECHS.vanguard;
+  mechDef: MechDef = MECHS[DEFAULT_MECH];
   skillCd = 0;
   skillT = 0;          // remaining time of the active skill effect
   skillDur = 0;        // full length of that effect, for the gauge under the mech
+  private strikeT = 0;  // orbital strike: time until the beams land
+  private strikes: Enemy[] = [];
   revives = 0;
   private nextArm: 0 | 1 = 0;
-  private faceYaw = 0;  // body yaw as drawn; see screenFacing()
+  faceYaw = 0;  // body yaw as drawn; see screenFacing()
 
   hp = P.hp;
   maxHp = P.hp;
@@ -149,7 +160,7 @@ export class Player {
   }
 
   // Start a run with the chosen mech and permanent talents.
-  reset(mech: MechDef = MECHS.vanguard, talents: Partial<Record<TalentId, number>> = {}): void {
+  reset(mech: MechDef = MECHS[DEFAULT_MECH], talents: Partial<Record<TalentId, number>> = {}): void {
     if (mech !== this.mechDef) this.setMech(mech);
     this.pos.set(0, 0, 0);
     this.vel.set(0, 0, 0);
@@ -183,7 +194,8 @@ export class Player {
     this.chainExtra = 0;
     this.mesh.visible = true;
     this.mesh.rotation.set(0, 0, 0);  // the title screen spins the model; facing is handled by the mech itself
-    this.skillCd = this.skillT = 0;
+    this.skillCd = this.skillT = this.strikeT = 0;
+    this.strikes = [];
 
     // mech base stats, then talents on top
     const t = (id: TalentId) => talents[id] ?? 0;
@@ -227,8 +239,12 @@ export class Player {
       g.projectiles.clearEnemyBulletsNear(this.pos, 6);
       g.fx.shockwave(this.pos.x, this.pos.z, 6, 0x66ccff);
       sfx.shieldBlock();
+    } else if (def.skill === 'clones') {
+      this.skillT = this.skillDur = CLONES.duration;
+      g.clones.spawn();
     } else {
-      this.blink(g);
+      this.skillT = this.skillDur = ORBITAL.warn;
+      this.orbitalLock(g);
     }
   }
 
@@ -236,29 +252,37 @@ export class Player {
     return this.mechDef.skill === 'overdrive' && this.skillT > 0;
   }
 
-  // Phantom skill: dash-teleport toward the aim, shredding enemies along the path.
-  private blink(g: Game): void {
-    const start = this.pos.clone();
-    let dist = 0;
-    for (let d = 0.25; d <= 7; d += 0.25) {
-      if (g.room.blocked(start.x + this.aim.x * d, start.z + this.aim.z * d, this.r)) break;
-      dist = d;
+  // Legendary skill, step 1: lock every enemy on screen; the strike lands when skillT runs out.
+  private orbitalLock(g: Game): void {
+    this.strikeT = ORBITAL.warn;
+    this.strikes = g.enemies.list.filter(e => e.hp > 0 && !e.def.inert && !untargetable(e) && onScreen(e.pos, g));
+    for (const e of this.strikes) g.fx.shockwave(e.pos.x, e.pos.z, e.r + 1.2, this.mechDef.palette.accent);
+    sfx.lock(Math.min(6, this.strikes.length));
+    g.hud.toast(t('轨道湮灭：锁定 {n} 个目标', { n: this.strikes.length }));
+  }
+
+  // Step 2: a beam from orbit on every locked enemy still alive, worth ORBITAL.seconds of the
+  // current weapon's output (bosses still go through their damage guard), and the field is wiped clean.
+  private orbitalStrike(g: Game): void {
+    const dmg = this.weaponDps * ORBITAL.seconds, color = this.mechDef.palette.accent;
+    for (const e of this.strikes) {
+      if (e.hp <= 0) continue;
+      g.fx.lightning({ x: e.pos.x, y: 18, z: e.pos.z }, { x: e.pos.x, y: 0.3, z: e.pos.z }, color);
+      g.fx.shockwave(e.pos.x, e.pos.z, 2.4, color);
+      g.enemies.damage(e, dmg, { dir: new THREE.Vector3(0, 0, 0), knock: 0 });
     }
-    const end = start.clone().addScaledVector(this.aim, dist);
-    const abx = end.x - start.x, abz = end.z - start.z, len2 = abx * abx + abz * abz || 1;
-    for (const e of [...g.enemies.list]) {
-      const t = Math.max(0, Math.min(1, ((e.pos.x - start.x) * abx + (e.pos.z - start.z) * abz) / len2));
-      if (Math.hypot(e.pos.x - (start.x + abx * t), e.pos.z - (start.z + abz * t)) < e.r + 0.7) {
-        g.enemies.damage(e, 60 * this.dmgMul, { dir: this.aim.clone(), knock: 8 });
-      }
-    }
-    g.fx.burst({ x: start.x, y: 1, z: start.z }, this.mechDef.palette.accent, 16, 6, 0.2, 0.4);
-    g.fx.lightning({ x: start.x, y: 1, z: start.z }, { x: end.x, y: 1, z: end.z }, this.mechDef.palette.accent);
-    this.pos.copy(end);
-    this.invuln = Math.max(this.invuln, 0.5);
-    g.fx.burst({ x: end.x, y: 1, z: end.z }, this.mechDef.palette.accent, 16, 6, 0.2, 0.4);
-    sfx.dash();
-    sfx.zap();
+    this.strikes = [];
+    g.projectiles.clearEnemyBulletsNear(this.pos, 999);
+    this.invuln = Math.max(this.invuln, ORBITAL.invuln);
+    g.fx.shake(1.2);
+    g.fx.hitstop(0.12);
+    sfx.boom();
+  }
+
+  // Sustained damage per second of the weapon in hand, all multipliers included (for the orbital strike).
+  get weaponDps(): number {
+    const w = this.weaponDef, s = this.activeSlot;
+    return w.dmg * w.count * weaponLevelMul(s.level) * this.dmgMul / (w.rate / this.fireRateMul);
   }
 
   // Where the player is aiming in the world (cursor or gamepad target).
@@ -475,6 +499,7 @@ export class Player {
     this.fireCd -= dt;
     this.skillCd -= dt;
     this.skillT -= dt;
+    if (this.strikeT > 0 && (this.strikeT -= dt) <= 0) this.orbitalStrike(g);
     this.dryToastT -= dt;
     if (this.reloadT > 0) {
       this.reloadT -= dt;
@@ -680,6 +705,7 @@ export class Player {
       const speed = w.speed * (w.count > 1 ? rand(0.85, 1.1) : 1);
       g.projectiles.firePlayer(muzzle, a, speed, w, shot);
     }
+    if (g.clones.active) g.clones.fire(w, shot, count, spread, aimPoint);
     this.shotCount++;
     if (this.rocketEvery && this.shotCount % this.rocketEvery === 0) {
       const r = WEAPONS.rocket;

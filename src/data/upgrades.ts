@@ -18,6 +18,8 @@ export interface UpgradeDef {
 const CAP = BALANCE.caps;
 
 export const RARITY_LABEL: Record<Rarity, string> = { common: t('普通'), rare: t('稀有'), legendary: t('传说') };
+// One palette for every rarity in the game: modules, shop pickups, mechs in the hangar.
+export const RARITY_COLOR: Record<Rarity, number> = { common: 0x9fb4ff, rare: 0xc77dff, legendary: 0xffc83d };
 export const RARITY_PRICE: Record<Rarity, number> = { common: 20, rare: 35, legendary: 60 };
 
 // Roll weights by context.

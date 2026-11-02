@@ -445,6 +445,13 @@ export class Enemies {
       const { toP, desired } = frame;
       toP.set(player.pos.x - e.pos.x, 0, player.pos.z - e.pos.z);
       frame.dist = toP.length() || 0.001;
+      const playerDist = frame.dist;
+      // phantom clones draw the enemies away from the mech
+      const lure = g.clones.active ? g.clones.lure(e.pos.x, e.pos.z, playerDist) : null;
+      if (lure) {
+        toP.set(lure.x - e.pos.x, 0, lure.z - e.pos.z);
+        frame.dist = toP.length() || 0.001;
+      }
       toP.divideScalar(frame.dist);
       frame.spd = def.speed * (1 + speedBonus) * slow * haste;
       frame.dt = dt * slow * haste;
@@ -497,7 +504,9 @@ export class Enemies {
         e.spawnT -= dt;
         const k = 1 - Math.max(0, e.spawnT) / MATERIALIZE_TIME;
         e.scale *= k < 1 ? k * (1 + Math.sin(e.t * 60) * 0.15) : 1;  // glitchy flicker while forming
-      } else if (!disabled && frame.dist < e.r + player.r && e.kind !== 'bomber' && !untargetable(e) && onTouch(e, g)) {
+      } else if (lure && !disabled && frame.dist < e.r + 0.8 && e.kind !== 'bomber' && !untargetable(e)) {
+        g.clones.hitAt(e.pos.x, e.pos.z, e.r);
+      } else if (!disabled && playerDist < e.r + player.r && e.kind !== 'bomber' && !untargetable(e) && onTouch(e, g)) {
         g.damagePlayer((e.state === 'charge' ? def.dmg * 1.4 : def.dmg) * (e.elite ? ELITE.dmg : 1) * e.dmgMul, e.pos);
       }
 

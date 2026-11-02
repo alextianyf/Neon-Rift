@@ -99,17 +99,43 @@ canvas { display: block; cursor: none; }
 #depthDesc { flex-basis: 100%; text-align: center; font-size: 13px; }
 button.go.alt { border-color: rgba(255, 255, 255, .35); background: rgba(255, 255, 255, .04); text-shadow: none; font-size: 14px; padding: 13px 28px; }
 button.go.alt:hover { border-color: var(--cyan); }
-.hangarbar { display: flex; gap: 14px; align-items: baseline; justify-content: center; margin: -6px 0 16px; font-size: 15px; }
-.hangargrid { display: flex; gap: 16px; flex-wrap: wrap; justify-content: center; margin-bottom: 22px; max-width: 980px; }
-.panel.wide { width: 440px; max-width: 92vw; }
-.mechrow { --mc: var(--cyan); position: relative; padding: 10px 140px 10px 12px; margin-bottom: 8px; border: 1px solid rgba(255, 255, 255, .12); border-left: 3px solid var(--mc); background: rgba(255, 255, 255, .03); }
-.mechrow.selected { box-shadow: inset 0 0 18px color-mix(in srgb, var(--mc) 25%, transparent); border-color: var(--mc); }
-.mechrow .mhead { display: flex; gap: 10px; align-items: baseline; }
-.mechrow .mhead b { font-size: 17px; color: var(--mc); }
-.mechrow .mstats, .mechrow .mskill { font-size: 12px; opacity: .8; margin-top: 3px; }
-.mechrow .mskill b { color: #fff; }
-.mechrow button.mini { position: absolute; right: 10px; top: 10px; }
-.talentrow { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 7px 0; border-bottom: 1px solid rgba(255, 255, 255, .06); font-size: 14px; }
+/* hangar: header, a row of mech cards, a row of talent cards; fits one screen on desktop */
+#hangarScreen { padding: 18px 20px; }
+.hangarhead { width: min(1180px, 100%); display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; margin-bottom: 6px; }
+.hangarhead h2 { margin: 0; }
+.hangarbar { display: flex; gap: 10px; align-items: baseline; font-size: 14px; }
+.hangarbar b { font-family: var(--font-num); font-size: 20px; }
+.hangarbar .dim { font-size: 12px; max-width: 360px; }
+.hsec { width: min(1180px, 100%); margin: 12px 0 8px; font-size: 13px; letter-spacing: 3px; color: var(--cyan); text-align: left; }
+.hsec .dim { font-size: 12px; letter-spacing: 0; margin-left: 8px; font-weight: 400; }
+.mechgrid { width: min(1180px, 100%); display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+.mcard { --rc: #9fb4ff; display: flex; flex-direction: column; gap: 6px; padding: 12px 14px; text-align: left; font-size: 12.5px; line-height: 1.45;
+  background: rgba(255, 255, 255, .03); border: 1px solid rgba(255, 255, 255, .12); border-top: 3px solid var(--rc); }
+.mcard.selected { border-color: var(--rc); box-shadow: inset 0 0 22px color-mix(in srgb, var(--rc) 22%, transparent); }
+.mcard.locked { background: rgba(255, 255, 255, .015); }
+.mcard .mtop { display: flex; align-items: center; gap: 8px; }
+.mcard .mtop b { font-size: 18px; color: var(--rc); letter-spacing: 2px; }
+.mcard .rtag { font-size: 11px; padding: 0 6px; color: var(--rc); border: 1px solid var(--rc); }
+.mcard .mdesc { color: rgba(219, 231, 255, .6); min-height: 2.9em; }
+.mcard i { font-style: normal; color: rgba(219, 231, 255, .5); margin-right: 6px; }
+.mcard .mstat { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 10px; padding: 6px 0; border-top: 1px solid rgba(255, 255, 255, .07); border-bottom: 1px solid rgba(255, 255, 255, .07); }
+.mcard .mstat span { font-family: var(--font-num); font-size: 12px; color: #fff; }
+.mcard .mstat span i { font-family: var(--font-ui); }
+.mcard .mskill { flex: 1; color: rgba(219, 231, 255, .8); }
+.mcard .mskill b { color: #fff; margin-right: 6px; }
+.mcard button.mini { align-self: stretch; margin-top: 4px; }
+.talentgrid { width: min(1180px, 100%); display: grid; grid-template-columns: repeat(6, 1fr); gap: 10px; margin-bottom: 16px; }
+.tcard { display: flex; flex-direction: column; gap: 4px; padding: 10px 12px; text-align: left; font-size: 12px; background: rgba(255, 255, 255, .03); border: 1px solid rgba(79, 240, 255, .18); }
+.tcard .ttop { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+.tcard .ttop b { font-size: 14px; }
+.tcard .tnow { color: #fff; }
+.tcard .tnext { flex: 1; color: rgba(219, 231, 255, .55); }
+.tcard.maxed { border-color: rgba(255, 200, 61, .35); }
+.tcard button.mini { align-self: stretch; }
+@media (max-width: 1100px) {
+  .mechgrid { grid-template-columns: repeat(2, 1fr); }
+  .talentgrid { grid-template-columns: repeat(3, 1fr); }
+}
 .pips i { display: inline-block; width: 8px; height: 8px; margin-right: 3px; border: 1px solid var(--cyan); transform: skewX(-15deg); }
 .pips i.on { background: var(--cyan); box-shadow: 0 0 6px var(--cyan); }
 button.mini { font-family: var(--font-ui); font-size: 13px; font-weight: 700; color: #05070d; background: var(--gold); border: 0; padding: 5px 12px; cursor: pointer; clip-path: var(--notch); white-space: nowrap; }

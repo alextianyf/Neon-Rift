@@ -482,6 +482,7 @@ export class Projectiles {
         }
       }
       let dead = b.life <= 0 || g.hazards.hitByEnemyShot(pos, b.dmg) || (!b.curve && (g.room.shotBlocked(pos.x, pos.z) || g.enemies.wallAt(pos.x, pos.z)));
+      if (!dead && g.clones.active && g.clones.hitAt(pos.x, pos.z, b.r)) dead = true;
       if (!dead && player.invuln <= 0 && Math.hypot(player.pos.x - pos.x, player.pos.z - pos.z) < b.r + player.r * 0.8) {
         g.damagePlayer(b.dmg, pos);
         dead = true;

@@ -88,7 +88,7 @@
     <div id="depthDesc" class="dim"></div>
   </div>
   <div class="titlebar">
-    <span>机体：<b id="titleMech">先锋</b></span>
+    <span>机体：<b id="titleMech">堡垒</b></span>
     <span>裂隙结晶：<b id="titleCrystals" class="gold">0</b></span>
   </div>
   <div class="titlebtns">
@@ -177,13 +177,14 @@
 </div>
 
 <div id="hangarScreen" class="overlay hidden">
-  <div class="kicker">HANGAR</div>
-  <h2>机库</h2>
-  <div class="hangarbar">裂隙结晶：<b id="hangarCrystals" class="gold">0</b><span class="dim">按分数、扇区与击败的首领获得，局内在黑市的机库终端结算</span></div>
-  <div class="hangargrid">
-    <div class="panel wide"><h3>机体</h3><div id="mechList"></div></div>
-    <div class="panel wide"><h3>永久天赋</h3><div id="talentList"></div></div>
+  <div class="hangarhead">
+    <div><div class="kicker">HANGAR</div><h2>机库</h2></div>
+    <div class="hangarbar"><span>裂隙结晶</span><b id="hangarCrystals" class="gold">0</b><span class="dim">按分数、扇区与击败的首领获得，局内在黑市的机库终端结算</span></div>
   </div>
+  <h3 class="hsec">机体</h3>
+  <div id="mechList" class="mechgrid"></div>
+  <h3 class="hsec">永久天赋 <span class="dim">每升一级，下一级价格 ×1.5</span></h3>
+  <div id="talentList" class="talentgrid"></div>
   <button class="go" id="hangarBack">返回</button>
 </div>
 

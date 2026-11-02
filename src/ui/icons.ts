@@ -25,7 +25,8 @@ const SKILL_PATHS: Record<SkillId | 'dash', string> = {
   dash: 'M4 6l6 6-6 6M11 6l6 6-6 6M18 6v12',
   overdrive: 'M13 2L5 14h6l-2 8 8-12h-6z',
   barrier: 'M12 2l8 3v6c0 5-3.5 9-8 11-4.5-2-8-6-8-11V5z',
-  blink: 'M2 12h4M7 12h3M12 7l6 5-6 5M18 4v16',
+  clones: 'M12 4a3 3 0 1 0 0.01 0M7 21v-5a5 5 0 0 1 10 0v5M4 8a2 2 0 1 0 0.01 0M2 18v-3a3 3 0 0 1 3-3M20 8a2 2 0 1 0 0.01 0M22 18v-3a3 3 0 0 0 -3-3',
+  orbital: 'M12 2v8M12 14v8M2 12h8M14 12h8M12 12m-3 0a3 3 0 1 0 6 0a3 3 0 1 0 -6 0',
 };
 
 export function skillIcon(id: SkillId | 'dash'): string {

@@ -11,7 +11,7 @@ import { TEST, TEST_SECTOR } from '../core/testMode';
 import type { BossLogEntry } from '../data/bossPlan';
 import type { RoomKind } from '../data/map';
 import { enemyDmgMul } from '../data/scaling';
-import { MECHS, crystalsFor, type MechDef } from '../data/meta';
+import { DEFAULT_MECH, MECHS, crystalsFor, type MechDef } from '../data/meta';
 import { UPGRADES, type UpgradeDef } from '../data/upgrades';
 import { MAX_WEAPON_SLOTS, WEAPONS } from '../data/weapons';
 import { Floaters } from '../ui/floaters';
@@ -27,6 +27,7 @@ import { Arsenal } from './arsenal';
 import { Ground } from './ground';
 import { Lasers } from './lasers';
 import { Portals } from './portals';
+import { Clones } from './clones';
 import { X } from './partsEndless';
 import { enemyTimeScale } from './abyss';
 import { abyss, ambientDarkness, lawDark, lawDmgMul, lawState, lawTick, rewardMul } from './abyss';
@@ -99,6 +100,7 @@ export class Game {
   readonly ground = new Ground(this);
   readonly lasers = new Lasers(this);
   readonly portals = new Portals(this);
+  readonly clones = new Clones(this);
   slippery = false;              // the whole floor is ice (abyss law)
   darkness = 0;                  // 0..1 how dark the arena is around the player (light eaters, the eye, laws)
   ambientDark = 0;               // darkness that doesn't come from light eaters (eye boss, abyss rules)
@@ -175,7 +177,7 @@ export class Game {
     this.endless = save?.endless ?? false;
     this.crystalsAwarded = save?.crystalsAwarded ?? 0;
     setDepth(this.depth);
-    const mech = MECHS[save?.mech ?? profile.selected] ?? MECHS.vanguard;
+    const mech = MECHS[save?.mech ?? profile.selected] ?? MECHS[DEFAULT_MECH];
     this.player.reset(mech, profile.talents);
     this.hud.setSkill(mech.skill, mech.skillName);
     this.score = this.kills = this.coinsEarned = this.combo = this.bestCombo = this.bossKills = 0;
@@ -252,6 +254,7 @@ export class Game {
     this.ground.clear();
     this.lasers.clear();
     this.portals.clear();
+    this.clones.clear();
   }
 
   setPaused(paused: boolean): void {
@@ -305,6 +308,8 @@ export class Game {
     this.comboT = C.window;
     this.bestCombo = Math.max(this.bestCombo, this.combo);
     if (e.def.boss) this.bossKills++;
+    const every = this.player.mechDef.killCdEvery;
+    if (every && this.kills % every === 0) this.player.skillCd -= 1;  // legendary passive
     this.perks.onKill(e);
     if (!this.enemies.purging) this.arsenal.onKill(e);
     if (e.noLoot) return;  // replicator copies and split-offs
@@ -384,6 +389,7 @@ export class Game {
     this.ground.update(dt);
     this.lasers.update(dt);
     this.portals.update(dt);
+    this.clones.update(dt);
     this.tutorial.update(dt);
     setMood(this.enemies.boss ? 'boss' : this.room.cleared ? 'calm' : 'combat');
     this.sector.update(dt);

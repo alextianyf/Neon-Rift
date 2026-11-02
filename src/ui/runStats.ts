@@ -38,7 +38,7 @@ export function statusIcons(p: Player): StatusIcon[] {
   const out: StatusIcon[] = [];
   const skill = p.mechDef.skill;
   const mod = (id: string) => { const u = UPGRADES.find(x => x.id === id)!; return tipText(u.name, u.desc); };
-  if (p.skillT > 0 && skill !== 'blink') out.push({ html: skillIcon(skill), color: '#ffd23f', time: p.skillT, tip: tipText(p.mechDef.skillName, p.mechDef.skillDesc) });
+  if (p.skillT > 0) out.push({ html: skillIcon(skill), color: '#ffd23f', time: p.skillT, tip: tipText(p.mechDef.skillName, p.mechDef.skillDesc) });
   if (p.anchored) out.push({ html: '▣', color: '#ffc83d', time: null, tip: mod('sentinel') });
   if (p.frenzy && p.hp < p.maxHp * 0.5) out.push({ html: '!', color: '#ff3355', time: null, tip: mod('frenzy') });
   if (p.shield > 0) out.push({ html: '◆', color: '#66ccff', time: null, tip: tipText(t('护盾'), t('抵挡下一次伤害（{n} 层）', { n: p.shield })) });

@@ -125,7 +125,7 @@ export class Menus {
     this.g.screens.showHangar(pr, {
       unlock: (id: MechId) => {
         const def = MECHS[id];
-        if (pr.crystals < def.cost || pr.mechs.includes(id)) { sfx.denied(); return; }
+        if (pr.crystals < def.cost || pr.mechs.includes(id) || (def.needsWin && pr.wins < 1)) { sfx.denied(); return; }
         pr.crystals -= def.cost;
         pr.mechs.push(id);
         pr.selected = id;
