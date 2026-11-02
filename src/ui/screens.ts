@@ -8,6 +8,7 @@ import { ENEMIES, type EnemyKind } from '../data/enemies';
 import { RARITY_COLOR, RARITY_LABEL, UPGRADES, type UpgradeDef } from '../data/upgrades';
 import { WEAPONS, type WeaponId } from '../data/weapons';
 import { weaponIcon } from './icons';
+import { MechPreview } from './mechPreview';
 import { talentLevel, type CodexKind, type Profile } from './profile';
 import { $ } from './dom';
 import type { Settings } from './settings';
@@ -280,7 +281,38 @@ export class Screens {
     this.setCrosshair(false);
   }
 
-  showHangar(profile: Profile, act: HangarActions): void {
+  // Hangar turntable: hovering a mech card previews it, clicking keeps it; it starts on the selected mech.
+  private preview: MechPreview | null = null;
+  private fitBound = false;
+  private previewKept: MechId | null = null;
+
+  private previewMech(id: MechId): void {
+    this.preview ??= new MechPreview($('mechPreview'));
+    this.preview.show(id);
+    const def = MECHS[id];
+    $('mechPreview').style.setProperty('--rc', `#${RARITY_COLOR[def.rarity].toString(16).padStart(6, '0')}`);
+    $('mpName').textContent = def.name;
+    $('mpTag').textContent = RARITY_LABEL[def.rarity];
+    $('mpSkill').textContent = t('技能 F · {s}', { s: def.skillName });
+    for (const el of document.querySelectorAll<HTMLElement>('#mechList .mcard')) el.classList.toggle('previewing', el.dataset.id === id);
+  }
+
+  // Shrink the hangar to fit the window height, so it's always one page on a desktop screen
+  // (phones in portrait scroll instead).
+  fitHangar(): void {
+    if (!this.fitBound) {
+      this.fitBound = true;
+      addEventListener('resize', () => { if (!$('hangarScreen').classList.contains('hidden')) this.fitHangar(); });
+    }
+    const el = $('hangarFit');
+    el.style.zoom = '1';
+    if (innerWidth < 900) return;
+    el.style.zoom = String(Math.min(1, (innerHeight - 28) / el.scrollHeight));  // 28: the screen's padding plus rounding
+  }
+
+  // `opening`: the hangar was just opened (the preview goes back to the selected mech).
+  showHangar(profile: Profile, act: HangarActions, opening = false): void {
+    if (opening || !this.previewKept) this.previewKept = profile.selected;
     $('hangarCrystals').textContent = String(profile.crystals);
     const mechList = $('mechList');
     mechList.innerHTML = '';
@@ -288,6 +320,9 @@ export class Screens {
       const owned = profile.mechs.includes(def.id), selected = profile.selected === def.id;
       const card = document.createElement('div');
       card.className = `mcard${selected ? ' selected' : ''}${owned ? '' : ' locked'}`;
+      card.dataset.id = def.id;
+      card.onmouseenter = () => this.previewMech(def.id);
+      card.onclick = () => { this.previewKept = def.id; this.previewMech(def.id); };
       card.style.setProperty('--rc', `#${RARITY_COLOR[def.rarity].toString(16).padStart(6, '0')}`);
       const stat = (label: string, value: string | number) => `<span><i>${label}</i>${value}</span>`;
       card.innerHTML =
@@ -307,6 +342,12 @@ export class Screens {
       card.appendChild(btn);
       mechList.appendChild(card);
     }
+    mechList.onmouseleave = () => this.previewMech(this.previewKept!);
+    this.previewMech(this.previewKept!);
+    // measure again once the frame is laid out and the fonts are in (text wrapping changes the height)
+    this.fitHangar();
+    requestAnimationFrame(() => this.fitHangar());
+    void document.fonts.ready.then(() => this.fitHangar());
     const talentList = $('talentList');
     talentList.innerHTML = '';
     for (const tal of TALENTS) {

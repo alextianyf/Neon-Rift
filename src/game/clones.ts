@@ -44,7 +44,7 @@ export class Clones {
     // dim, so the hologram stays under the bloom threshold and reads as a see-through copy
     this.ghost ??= new THREE.MeshBasicMaterial({ color: new THREE.Color(def.palette.accent).multiplyScalar(0.45), transparent: true, opacity: 0.45, depthWrite: false });
     for (const side of [-1, 1] as const) {
-      const model = new MechModel(def.palette, def.scale);
+      const model = new MechModel(def.palette, def.scale, false, def.id);
       model.root.traverse(o => {
         if (!(o instanceof THREE.Mesh)) return;
         if (o.geometry instanceof THREE.CircleGeometry) o.visible = false;  // a hologram casts no shadow

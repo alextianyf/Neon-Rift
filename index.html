@@ -220,15 +220,23 @@
 </div>
 
 <div id="hangarScreen" class="overlay hidden">
+  <div id="hangarFit" class="hangarfit">
   <div class="hangarhead">
     <div><div class="kicker">HANGAR</div><h2>机库</h2></div>
     <div class="hangarbar"><span>裂隙结晶</span><b id="hangarCrystals" class="gold">0</b><span class="dim">按分数、扇区与击败的首领获得，局内在黑市的机库终端结算</span></div>
   </div>
   <h3 class="hsec">机体</h3>
-  <div id="mechList" class="mechgrid"></div>
+  <div class="mechrow2">
+    <div id="mechPreview" class="mpreview">
+      <div class="mplabel"><div><b id="mpName"></b><span id="mpTag" class="rtag"></span></div><div id="mpSkill"></div></div>
+      <div class="mphint dim">指向或点击右边的机体卡片预览</div>
+    </div>
+    <div id="mechList" class="mechgrid"></div>
+  </div>
   <h3 class="hsec">永久天赋 <span class="dim">每升一级，下一级价格 ×1.5</span></h3>
   <div id="talentList" class="talentgrid"></div>
   <button class="go" id="hangarBack">返回</button>
+  </div>
 </div>
 
 <script type="module" src="/src/main.ts"></script>

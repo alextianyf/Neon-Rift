@@ -1,6 +1,6 @@
 import { TEST, storageKey } from '../core/testMode';
 import { MAX_DEPTH } from '../data/depth';
-import { DEFAULT_MECH, type MechId, type TalentId } from '../data/meta';
+import { DEFAULT_MECH, MECHS, type MechId, type TalentId } from '../data/meta';
 
 // Persistent player profile (localStorage): crystals, unlocks, talents, run history.
 export interface Profile {
@@ -41,6 +41,8 @@ export function loadProfile(): Profile {
     // the default mech is always owned (older profiles started with a different one)
     const mechs = [...(p?.mechs ?? DEFAULT.mechs)];
     if (!mechs.includes(DEFAULT_MECH)) mechs.unshift(DEFAULT_MECH);
+    // the test link always has every mech, including ones added after its save was made
+    if (TEST) for (const id of Object.keys(MECHS) as MechId[]) if (!mechs.includes(id)) mechs.push(id);
     return { ...DEFAULT, ...p, talents: { ...(p?.talents ?? {}) }, seen: [...(p?.seen ?? [])], mechs,
       codex: { enemies: [...(p?.codex?.enemies ?? [])], weapons: [...(p?.codex?.weapons ?? [])], upgrades: [...(p?.codex?.upgrades ?? [])] },
       history: [...(p?.history ?? [])], totals: { ...DEFAULT.totals, ...(p?.totals ?? {}) } };

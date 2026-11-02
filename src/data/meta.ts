@@ -58,7 +58,7 @@ export const MECHS: Record<MechId, MechDef> = {
     id: 'phantom', name: t('幻影'), desc: t('轻型机体：快、冲刺冷却短、暴击高，但更脆'), cost: 200, rarity: 'rare',
     hp: 80, speed: 9.8, dashCdMul: 0.8, dmgMul: 1, critBonus: 0.12, shield: 0, starter: 'smg',
     skill: 'clones', skillName: t('幻影分身'), skillDesc: t('6 秒内左右各出现一个分身，复制你的每一发子弹（50% 伤害），并吸引敌人火力；分身被打 3 下就消失'), skillCd: 15,
-    palette: { armor: 0x5c5470, armorTop: 0x7a7090, paint: 0xff4dd2, accent: 0xc77dff }, scale: 1.2,
+    palette: { armor: 0x6a6282, armorTop: 0x9188b0, paint: 0xff4dd2, accent: 0xc77dff }, scale: 1.2,
   },
   apex: {
     id: 'apex', name: t('奇点'), desc: t('传说机体：各项属性均衡偏高，击杀加速技能冷却'), cost: 600, rarity: 'legendary', needsWin: true, killCdEvery: 10,

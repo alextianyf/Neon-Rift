@@ -240,7 +240,7 @@ export class TitleScene {
       this.shafts.push(mat);
     }
     // a second mech parked in the dark at the back, for depth and scale
-    const parked = new MechModel({ armor: 0x30343c, armorTop: 0x3a3f48, paint: 0x5a3a1a, accent: 0x1a4a55 }, 3.1, true);
+    const parked = new MechModel({ armor: 0x30343c, armorTop: 0x3a3f48, paint: 0x5a3a1a, accent: 0x1a4a55 }, 3.1, true, 'bastion');
     const dim = new THREE.MeshBasicMaterial({ color: 0x0d3a44 });
     parked.root.traverse(o => { if (o instanceof THREE.Mesh && o.material instanceof THREE.MeshBasicMaterial && !o.material.transparent) o.material = dim; });
     parked.update(0, this.vel, -0.3, 2, false);

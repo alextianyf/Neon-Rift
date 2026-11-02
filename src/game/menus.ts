@@ -91,8 +91,8 @@ export class Menus {
 
   private openHangar(): void {
     this.g.screens.toggle('titleScreen', false);
-    this.renderHangar();
     this.g.screens.toggle('hangarScreen', true);
+    this.renderHangar(true);
   }
 
   // Hangar terminal in a shop: the game freezes behind the hangar screen.
@@ -105,8 +105,8 @@ export class Menus {
     g.hud.prompt(null);
     g.screens.setCrosshair(false);
     sfx.pickup();
-    this.renderHangar();
     g.screens.toggle('hangarScreen', true);
+    this.renderHangar(true);
   }
 
   closeHangar(): void {
@@ -122,7 +122,7 @@ export class Menus {
     this.g.screens.toggle('titleScreen', true);
   }
 
-  private renderHangar(): void {
+  private renderHangar(opening = false): void {
     const { progress, player } = this.g;
     const pr = progress.profile, inRun = this.g.state === 'hangar';
     const toast = (s: string) => { if (inRun) this.g.hud.toast(s); };
@@ -162,6 +162,6 @@ export class Menus {
         }
         this.renderHangar();
       },
-    });
+    }, opening);
   }
 }

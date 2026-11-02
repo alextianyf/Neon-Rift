@@ -23,7 +23,8 @@ const aimPoint = new THREE.Vector3();
 const moveDir = new THREE.Vector3();
 
 // Legendary skill "轨道湮灭" (orbital strike).
-const ORBITAL = { warn: 1, seconds: 6, invuln: 1 };
+const ORBITAL = { warn: 1, seconds: 6, invuln: 1, shove: 11, stagger: 0.4 };  // shove: ~2.2 units back with the reduced grip
+const GHOST_LIFE = 0.35;
 const ndc = new THREE.Vector3();
 function onScreen(pos: THREE.Vector3, g: Game): boolean {
   ndc.set(pos.x, 0.5, pos.z).project(g.gfx.camera);
@@ -66,6 +67,10 @@ export class Player {
   skillT = 0;          // remaining time of the active skill effect
   skillDur = 0;        // full length of that effect, for the gauge under the mech
   private strikeT = 0;  // orbital strike: time until the beams land
+  // phantom: fading afterimages left behind by a dash
+  private readonly ghosts: { obj: THREE.Object3D; mat: THREE.MeshBasicMaterial; t: number }[] = [];
+  private ghostT = 0;
+  private recoilT = 0;  // after a heavy recoil: less grip, so the shove carries
   private strikes: Enemy[] = [];
   revives = 0;
   private nextArm: 0 | 1 = 0;
@@ -214,7 +219,7 @@ export class Player {
 
   setMech(def: MechDef): void {
     this.mesh.remove(this.mech.root);
-    this.mech = new MechModel(def.palette, def.scale);
+    this.mech = new MechModel(def.palette, def.scale, false, def.id);
     this.mesh.add(this.mech.root);
     this.mechDef = def;
     this.updateGunColor();
@@ -252,9 +257,41 @@ export class Player {
     return this.mechDef.skill === 'overdrive' && this.skillT > 0;
   }
 
+  // A see-through copy of the mech where it stands now, fading over GHOST_LIFE.
+  private afterimage(g: Game): void {
+    const mat = new THREE.MeshBasicMaterial({ color: new THREE.Color(this.mechDef.palette.accent).multiplyScalar(0.7), transparent: true, opacity: 0.45, depthWrite: false });
+    const copy = this.mech.root.clone(true);
+    copy.traverse(o => {
+      if (!(o instanceof THREE.Mesh)) return;
+      if (o.geometry instanceof THREE.CircleGeometry) o.visible = false;  // no shadow
+      else o.material = mat;
+    });
+    const holder = new THREE.Group();
+    holder.position.copy(this.mesh.position);
+    holder.rotation.copy(this.mesh.rotation);
+    holder.add(copy);
+    g.gfx.scene.add(holder);
+    this.ghosts.push({ obj: holder, mat, t: GHOST_LIFE });
+  }
+
+  private updateGhosts(dt: number, g: Game): void {
+    if (this.ghostT > 0 && (this.ghostT -= dt) <= 0) this.afterimage(g);
+    for (let i = this.ghosts.length - 1; i >= 0; i--) {
+      const gh = this.ghosts[i];
+      gh.t -= dt;
+      gh.mat.opacity = 0.45 * Math.max(0, gh.t / GHOST_LIFE);
+      if (gh.t > 0) continue;
+      g.gfx.scene.remove(gh.obj);
+      gh.mat.dispose();
+      this.ghosts.splice(i, 1);
+    }
+  }
+
   // Legendary skill, step 1: lock every enemy on screen; the strike lands when skillT runs out.
+  // The shoulder cannon swings up and the free hand points at the sky while it charges.
   private orbitalLock(g: Game): void {
     this.strikeT = ORBITAL.warn;
+    this.mech.skillPose(true);
     this.strikes = g.enemies.list.filter(e => e.hp > 0 && !e.def.inert && !untargetable(e) && onScreen(e.pos, g));
     for (const e of this.strikes) g.fx.shockwave(e.pos.x, e.pos.z, e.r + 1.2, this.mechDef.palette.accent);
     sfx.lock(Math.min(6, this.strikes.length));
@@ -272,10 +309,22 @@ export class Player {
       g.enemies.damage(e, dmg, { dir: new THREE.Vector3(0, 0, 0), knock: 0 });
     }
     this.strikes = [];
+    // the shoulder cannon fires its beam into the sky as the strikes land
+    const tip = this.mech.shoulderTip(new THREE.Vector3());
+    if (tip) {
+      g.fx.lightning(tip, { x: tip.x, y: tip.y + 22, z: tip.z }, color);
+      g.fx.burst(tip, color, 18, 5, 0.18, 0.5);
+    }
+    this.mech.skillPose(false);
     g.projectiles.clearEnemyBulletsNear(this.pos, 999);
     this.invuln = Math.max(this.invuln, ORBITAL.invuln);
-    g.fx.shake(1.2);
-    g.fx.hitstop(0.12);
+    // the recoil: the mech is shoved back (control returns gradually) and the screen shakes hard
+    this.mech.recoil();
+    this.vel.addScaledVector(this.aim, -ORBITAL.shove);
+    this.recoilT = ORBITAL.stagger;
+    g.fx.shockwave(this.pos.x, this.pos.z, 3.5, this.mechDef.palette.accent);
+    g.fx.shake(2.5);
+    g.fx.hitstop(0.16);
     sfx.boom();
   }
 
@@ -470,6 +519,7 @@ export class Player {
     this.dashT = P.dashDuration;
     this.invuln = Math.max(this.invuln, P.dashInvuln);
     this.dashCd = this.dashCooldown;
+    if (this.mechDef.id === 'phantom') { this.afterimage(g); this.ghostT = 0.09; }
     sfx.dash();
     g.enemies.shakeOff();
     if (this.dashNova) {
@@ -499,6 +549,8 @@ export class Player {
     this.fireCd -= dt;
     this.skillCd -= dt;
     this.skillT -= dt;
+    this.recoilT -= dt;
+    this.updateGhosts(dt, g);
     if (this.strikeT > 0 && (this.strikeT -= dt) <= 0) this.orbitalStrike(g);
     this.dryToastT -= dt;
     if (this.reloadT > 0) {
@@ -519,7 +571,8 @@ export class Player {
       const dir = g.input.moveDir(moveDir);
       // on ice the mech slides: speeding up and slowing down take ~3x longer
       const ice = g.slippery || g.ground.iceAt(this.pos.x, this.pos.z);
-      const k = 1 - Math.exp(-(ice ? 4.2 : 14) * dt);
+      // a heavy recoil takes a moment to brake out of, like ice
+      const k = 1 - Math.exp(-(ice || this.recoilT > 0 ? 4.2 : 14) * dt);
       const speed = this.moveSpeed * g.hazards.slowAt(this.pos.x, this.pos.z) * g.ground.slowAt(this.pos.x, this.pos.z) * this.statusSlow;
       this.vel.x += (dir.x * speed - this.vel.x) * k;
       this.vel.z += (dir.z * speed - this.vel.z) * k;

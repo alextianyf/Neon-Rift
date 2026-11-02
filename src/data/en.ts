@@ -834,6 +834,8 @@ export const EN: Record<string, string> = {
   '♪ 音乐：关': '♪ Music: off',
   // --- title screen, controls ---
   '操作说明': 'Controls',
+  '指向或点击右边的机体卡片预览': 'Hover or click a mech card to preview it',
+  '技能 F · {s}': 'Skill F · {s}',
   '当前机体': 'Current frame',
   '共 15 个扇区，每 5 个扇区一个首领 · 打过第 15 扇区即通关，之后可继续无尽模式': '15 sectors, a boss every 5 · beat sector 15 to win, then keep going in endless mode',
   '键盘鼠标': 'Keyboard & mouse',
