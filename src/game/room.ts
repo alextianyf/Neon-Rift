@@ -11,6 +11,7 @@ import { CHALLENGE_TIME, ROOM_INFO, type RoomKind } from '../data/map';
 import { MODS } from '../data/depth';
 import { eliteCapBonus } from '../data/scaling';
 import { t } from '../core/i18n';
+import { RiftCrack } from './riftCrack';
 
 export interface AABB {
   x0: number;
@@ -37,6 +38,7 @@ export interface Portal {
   group: THREE.Group;
   pos: THREE.Vector3;
   kind: RoomKind;  // the sector type this portal leads to
+  crack: RiftCrack;
 }
 
 const SIZES: Record<RoomSize, [number, number]> = { small: [14, 9], medium: [18, 12], large: [22, 15] };
@@ -373,31 +375,15 @@ export class Room {
   }
 
   updatePortal(dt: number, time: number): void {
-    for (const p of this.portals) {
-      const [ring, disc] = p.group.children as THREE.Mesh<THREE.BufferGeometry, THREE.MeshBasicMaterial>[];
-      ring.rotation.z += dt * 2;
-      disc.material.opacity = 0.25 + Math.sin(time * 5) * 0.12;
-    }
+    for (const p of this.portals) p.crack.update(dt, time);
   }
 
+  // An exit is a rift torn into the floor (riftCrack.ts), glowing in the destination's color.
   private addPortal(x: number, z: number, kind: RoomKind): void {
-    const g = new THREE.Group();
-    g.position.set(x, 0, z);
-    const col = new THREE.Color(ROOM_INFO[kind].color).multiplyScalar(2.5);
-    const ring = new THREE.Mesh(new THREE.TorusGeometry(1.3, 0.12, 8, 40), new THREE.MeshBasicMaterial({ color: col }));
-    ring.rotation.x = -Math.PI / 2;
-    ring.position.y = 0.15;
-    const disc = new THREE.Mesh(new THREE.CircleGeometry(1.2, 32), new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.35 }));
-    disc.rotation.x = -Math.PI / 2;
-    disc.position.y = 0.05;
-    const beam = new THREE.Mesh(
-      new THREE.CylinderGeometry(1.1, 1.1, 6, 24, 1, true),
-      new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.12, side: THREE.DoubleSide, blending: THREE.AdditiveBlending, depthWrite: false }),
-    );
-    beam.position.y = 3;
-    g.add(ring, disc, beam);
-    this.scene.add(g);
-    this.portals.push({ group: g, pos: new THREE.Vector3(x, 0, z), kind });
+    const crack = new RiftCrack(ROOM_INFO[kind].color);
+    crack.group.position.set(x, 0, z);
+    this.scene.add(crack.group);
+    this.portals.push({ group: crack.group, pos: new THREE.Vector3(x, 0, z), kind, crack });
   }
 
   // A rectangular hole into the void: blocks walking, not shooting.

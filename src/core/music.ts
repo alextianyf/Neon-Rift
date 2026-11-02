@@ -1,11 +1,14 @@
 import { audioContext } from './audio';
+import { EPIC_BPM, distortionCurve, playEpicStep, reverbImpulse, type EpicBus } from './epicScore';
 
-// Procedural synthwave soundtrack: a step sequencer scheduled ahead on the WebAudio clock.
-// Layers fade in and out by mood; mood changes take effect on the next bar.
+// Procedural soundtrack: a step sequencer scheduled ahead on the WebAudio clock. Two scores:
+// 'epic' (the heavy mech score in epicScore.ts, the default) and 'classic' (the original synthwave,
+// below). Layers fade in and out by mood; mood and score changes take effect on the next bar.
 export type Mood = 'off' | 'menu' | 'calm' | 'combat' | 'boss';
+export type MusicStyle = 'epic' | 'classic';
 
 const BPM = 108;
-const STEP = 60 / BPM / 4;           // one 16th note
+const STEP = 60 / BPM / 4;           // one 16th note (classic)
 const LOOKAHEAD = 0.15;              // seconds scheduled ahead
 const BASE_GAIN = 0.32;
 
@@ -46,6 +49,10 @@ let nextTime = 0;
 let mood: Mood = 'off';
 let pending: Mood = 'off';
 let volume = 0.6;
+let style: MusicStyle = 'epic';
+let epic: EpicBus | null = null;
+
+const stepLen = () => (style === 'epic' ? 60 / EPIC_BPM / 4 : STEP);
 
 function setup(): boolean {
   if (ctx) return true;
@@ -53,7 +60,14 @@ function setup(): boolean {
   if (!ctx) return false;
   out = ctx.createGain();
   out.gain.value = 0;
-  out.connect(ctx.destination);
+  // a gentle limiter: the boss score can peak near full scale at maximum volume
+  const limiter = ctx.createDynamicsCompressor();
+  limiter.threshold.value = -6;
+  limiter.knee.value = 6;
+  limiter.ratio.value = 8;
+  limiter.attack.value = 0.003;
+  limiter.release.value = 0.15;
+  out.connect(limiter).connect(ctx.destination);
   // ping-pong-ish echo for the arpeggio
   delay = ctx.createDelay(1);
   delay.delayTime.value = STEP * 3;
@@ -66,7 +80,33 @@ function setup(): boolean {
   noise = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate);
   const d = noise.getChannelData(0);
   for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+  // the epic score's buses: a distorted guitar amp and a hall reverb
+  const amp = ctx.createWaveShaper();
+  amp.curve = distortionCurve(40);
+  amp.oversample = '2x';
+  const cab = ctx.createBiquadFilter();
+  cab.type = 'lowpass';
+  cab.frequency.value = 3200;
+  const lowCut = ctx.createBiquadFilter();
+  lowCut.type = 'highpass';
+  lowCut.frequency.value = 80;
+  const ampOut = ctx.createGain();
+  ampOut.gain.value = 0.55;
+  amp.connect(cab).connect(lowCut).connect(ampOut).connect(out);
+  const verb = ctx.createConvolver();
+  verb.buffer = reverbImpulse(ctx);
+  const verbOut = ctx.createGain();
+  verbOut.gain.value = 0.35;
+  verb.connect(verbOut).connect(out);
+  epic = { ctx, out, guitar: amp, verb, noise };
   return true;
+}
+
+// Switch scores; the new one starts on a fresh bar.
+export function setMusicStyle(s: MusicStyle): void {
+  if (s === style) return;
+  style = s;
+  if (ctx) { step = 0; nextTime = ctx.currentTime + 0.05; }
 }
 
 export function setMusicVolume(v: number): void {
@@ -118,8 +158,11 @@ function tick(): void {
   if (nextTime < ctx.currentTime - 0.2) nextTime = ctx.currentTime + 0.05;
   while (nextTime < ctx.currentTime + LOOKAHEAD) {
     if (step % 16 === 0 && pending !== 'off' && pending !== mood) mood = pending;
-    if (mood !== 'off') playStep(step, nextTime);
-    nextTime += STEP;
+    if (mood !== 'off') {
+      if (style === 'epic' && epic) playEpicStep(epic, mood, step, nextTime, stepLen());
+      else playStep(step, nextTime);
+    }
+    nextTime += stepLen();
     step = (step + 1) % 64;
   }
 }

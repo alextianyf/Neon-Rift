@@ -391,6 +391,7 @@ button.go:hover { background: rgba(79, 240, 255, .2); }
 .eentry.abyss .ehead b { color: #ff5a6a; }
 .panel { width: 272px; text-align: left; padding: 14px 16px; background: var(--panel); border: 1px solid var(--cyan-dim); clip-path: var(--notch); }
 .panel h3 { margin: 0 0 10px; font-size: 14px; letter-spacing: 3px; color: var(--cyan); font-weight: 700; }
+.opt select { margin-left: 8px; font-family: var(--font-ui); font-size: 13px; color: #fff; background: rgba(8, 16, 28, .9); border: 1px solid var(--cyan-dim); padding: 3px 6px; }
 .statrow, .buildrow { display: flex; justify-content: space-between; font-size: 14px; line-height: 1.85; }
 .statrow b { font-family: var(--font-num); font-size: 12px; font-weight: 500; color: #fff; }
 .buildrow.common span { color: #9fb4ff; }

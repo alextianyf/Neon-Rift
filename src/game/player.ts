@@ -258,6 +258,19 @@ export class Player {
     }
   }
 
+  // Scripted moments (the deployment drop, falling into an exit rift): legs tucked while `hanging`;
+  // the drop faces up the screen, the rift keeps the current facing.
+  introPose(dt: number, hanging: boolean, faceUp = true): void {
+    if (faceUp) this.faceYaw = Math.PI;
+    this.mech.update(dt, this.vel.set(0, 0, 0), this.faceYaw, this.moveSpeed, hanging);
+    this.shieldBubble.visible = false;  // no shield bubble or barrier on the way down
+    this.barrier.update(dt, 0);
+  }
+
+  introLand(): void {
+    this.mech.recoil();
+  }
+
   // Bastion's barrier is up: no damage of any kind, enemy shots stop at the dome.
   get barrierUp(): boolean {
     return this.mechDef.skill === 'barrier' && this.skillT > 0;

@@ -16,6 +16,11 @@ import { AFFIXES } from '../data/affixes';
 import { ROLL_WEIGHTS, rollUpgrades, type Rarity, type UpgradeDef } from '../data/upgrades';
 import type { Tag } from '../ui/floaters';
 import type { Game } from './game';
+import type { RiftCrack } from './riftCrack';
+import type * as THREE from 'three';
+
+// Dropping into an exit rift: pulled to its middle, then falling in (seconds).
+const FALL = { pull: 0.18, drop: 0.47 };
 
 // One sector from entry to exit: build it, spawn its waves, detect the clear,
 // offer a module, then open the portals to the next sector.
@@ -25,6 +30,7 @@ export class SectorFlow {
   private choices: UpgradeDef[] = [];
   private pendingPortal: RoomKind | null = null;
   private portalArmed = true;
+  private fall: { t: number; kind: RoomKind; from: THREE.Vector3; to: THREE.Vector3; crack: RiftCrack | null; dropped: boolean } | null = null;
   private twinSlot = 0;
   private custom: { n: number; onPick: (i: number) => void } | null = null;  // false after cancelling, until the player steps off the portal
 
@@ -270,15 +276,53 @@ export class SectorFlow {
     g.hud.toast(kinds.length > 1 ? t('选择下一个扇区') : t('裂隙通道已开启'));
   }
 
+  // Through an exit: the mech is pulled to the middle of the rift and drops into it (updateFall),
+  // then the usual short fade into the next sector. The camera stays where it is.
   private goThroughPortal(kind: RoomKind): void {
-    const g = this.g;
+    const g = this.g, p = g.player;
+    const portal = g.room.portals.filter(o => o.kind === kind).sort((a, b) => a.pos.distanceTo(p.pos) - b.pos.distanceTo(p.pos))[0];
     g.state = 'transition';
-    sfx.portal();
-    g.hud.fade(true, `SECTOR ${String(g.room.n + 1).padStart(2, '0')} // ${ROOM_INFO[kind].name}`);
+    g.hud.prompt(null);
+    this.fall = { t: 0, kind, from: p.pos.clone(), to: portal ? portal.pos.clone() : p.pos.clone(), crack: portal?.crack ?? null, dropped: false };
+    p.introLand();  // a crouch before the jump
+  }
+
+  updateFall(dt: number): void {
+    const f = this.fall, g = this.g;
+    if (!f) return;
+    f.t += dt;
+    const p = g.player, m = p.mesh;
+    // pulled to the center of the rift...
+    const pull = Math.min(1, f.t / FALL.pull);
+    p.pos.lerpVectors(f.from, f.to, pull * pull * (3 - 2 * pull));
+    m.position.copy(p.pos);
+    // ...then it drops: sinking, tipping forward, shrinking into the dark
+    const d = Math.max(0, (f.t - FALL.pull) / FALL.drop);
+    if (d > 0 && !f.dropped) {
+      f.dropped = true;
+      f.crack?.burst();
+      const c = ROOM_INFO[f.kind].color;
+      g.fx.burst({ x: f.to.x, y: 0.4, z: f.to.z }, c, 30, 7, 0.14, 0.7);
+      g.fx.shockwave(f.to.x, f.to.z, 2.6, c);
+      g.gfx.flash(f.to.x, 1.5, f.to.z, c, 40);
+      g.fx.shake(0.35);
+      sfx.portal();
+    }
+    p.introPose(dt, d > 0, false);
+    m.position.y = -3.4 * d * d;
+    m.rotation.x = 0.5 * d;
+    m.scale.setScalar(1 - 0.45 * d);
+    if (d < 1) return;
+    this.fall = null;
+    m.visible = false;
+    g.hud.fade(true, `SECTOR ${String(g.room.n + 1).padStart(2, '0')} // ${ROOM_INFO[f.kind].name}`);
     setTimeout(() => {
-      this.enter(g.room.n + 1, kind);
+      m.rotation.x = 0;
+      m.scale.setScalar(1);
+      m.visible = true;
+      this.enter(g.room.n + 1, f.kind);
       g.hud.fade(false);
       g.state = 'play';
-    }, 550);
+    }, 450);
   }
 }

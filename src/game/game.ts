@@ -3,7 +3,7 @@ import { initAudio, setVolume, sfx } from '../core/audio';
 import { Graphics } from '../core/graphics';
 import { t } from '../core/i18n';
 import { Input } from '../core/input';
-import { duck, setMood, setMusicVolume } from '../core/music';
+import { duck, setMood, setMusicStyle, setMusicVolume } from '../core/music';
 import { seedRun, todayKey } from '../core/rng';
 import { BALANCE } from '../data/balance';
 import { DEPTH_CRYSTAL_BONUS, DEPTH_DESC, FINAL_SECTOR, MODS, VICTORY_CRYSTALS, setDepth } from '../data/depth';
@@ -29,6 +29,7 @@ import { Lasers } from './lasers';
 import { Portals } from './portals';
 import { Clones } from './clones';
 import { OrbitalFx } from './orbitalFx';
+import { Intro } from './intro';
 import { TitleScene } from './titleScene';
 import { X } from './partsEndless';
 import { enemyTimeScale } from './abyss';
@@ -52,7 +53,7 @@ import { Room } from './room';
 import { SectorFlow } from './sector';
 import { Tutorial } from './tutorial';
 
-export type GameState = 'title' | 'play' | 'paused' | 'upgrade' | 'portal' | 'hangar' | 'transition' | 'dead' | 'won';
+export type GameState = 'title' | 'intro' | 'play' | 'paused' | 'upgrade' | 'portal' | 'hangar' | 'transition' | 'dead' | 'won';
 
 const tmp = new THREE.Vector3();
 
@@ -104,6 +105,8 @@ export class Game {
   readonly portals = new Portals(this);
   readonly clones = new Clones(this);
   readonly orbital = new OrbitalFx(this);
+  private readonly intro = new Intro(this);
+  private introClick = false;  // the mouse was already down (a click skips only once)
   private readonly titleScene = new TitleScene(this);
   slippery = false;              // the whole floor is ice (abyss law)
   darkness = 0;                  // 0..1 how dark the arena is around the player (light eaters, the eye, laws)
@@ -154,6 +157,12 @@ export class Game {
       document.body.classList.toggle('playing', this.state === 'play');
       if (this.input.usingPad && this.state === 'play') placePadCrosshair(this);
       if (this.state === 'play') this.update(dt);
+      else if (this.state === 'transition') this.sector.updateFall(dt);
+      else if (this.state === 'intro') {
+        if (this.input.mouseDown && !this.introClick) this.skipIntro();
+        this.introClick = this.input.mouseDown;
+        if (this.intro.update(dt)) this.endIntro();
+      }
       else if (this.state === 'title') {
         this.time += dt;
         this.titleScene.update(dt);
@@ -165,7 +174,8 @@ export class Game {
         this.atmosphere.update(dt, this.time, this.player.pos);
       }
       this.updateQuickView();
-      if (this.state !== 'title') this.gfx.updateCamera(dt, this.player.pos, this.player.aim, this.fx.shakeAmt);  // the title scene runs its own camera
+      // the title scene and the deployment drop run their own camera
+      if (this.state !== 'title' && this.state !== 'intro') this.gfx.updateCamera(dt, this.player.pos, this.player.aim, this.fx.shakeAmt);
       this.fx.decayShake(dt);
       this.floaters.update(frozen ? 0 : dt);
       this.gfx.render(dt);
@@ -230,7 +240,27 @@ export class Game {
       this.endless = first > FINAL_SECTOR;
       this.sector.enter(first, 'combat');
     }
+    this.beginIntro();
+  }
+
+  // Every run starts with the deployment drop (intro.ts); the game waits until it lands.
+  private beginIntro(): void {
+    this.state = 'intro';
+    this.introClick = this.input.mouseDown;
+    this.hud.show(false);
+    this.screens.setCrosshair(false);
+    this.intro.begin();
+  }
+
+  skipIntro(): void {
+    if (this.state === 'intro') this.intro.skip();
+  }
+
+  private endIntro(): void {
     this.state = 'play';
+    this.hud.show(true);
+    this.screens.setCrosshair(true);
+    this.gfx.snapCamera(this.player.pos.x, this.player.pos.z);
   }
 
   // Snapshot taken on entering each sector; `seed` is the RNG state from before the sector was built.
@@ -593,6 +623,7 @@ export class Game {
     this.settings = s;
     saveSettings(s);
     setVolume(s.volume);
+    setMusicStyle(s.musicStyle);
     setMusicVolume(this.musicLevel());
     this.screens.showMusic(s.musicOn);
     this.fx.shakeScale = s.shake ? 1 : 0;

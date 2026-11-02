@@ -834,6 +834,9 @@ export const EN: Record<string, string> = {
   '♪ 音乐：关': '♪ Music: off',
   // --- title screen, controls ---
   '操作说明': 'Controls',
+  '配乐': 'Score',
+  '机甲史诗': 'Mech epic',
+  '合成器（原版）': 'Synthwave (original)',
   '指向或点击右边的机体卡片预览': 'Hover or click a mech card to preview it',
   '技能 F · {s}': 'Skill F · {s}',
   '当前机体': 'Current frame',

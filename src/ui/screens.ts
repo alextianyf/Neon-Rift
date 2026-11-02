@@ -160,7 +160,9 @@ export class Screens {
   }
 
   // Wire the settings controls; `onChange` receives the values of these controls (other settings untouched).
-  bindSettings(initial: Settings, onChange: (s: Pick<Settings, 'volume' | 'music' | 'shake' | 'damageNumbers' | 'hints'>) => void): void {
+  bindSettings(initial: Settings, onChange: (s: Pick<Settings, 'volume' | 'music' | 'shake' | 'damageNumbers' | 'hints' | 'musicStyle'>) => void): void {
+    const score = $('optScore') as HTMLSelectElement;
+    score.value = initial.musicStyle;
     const vol = $('optVolume') as HTMLInputElement;
     const shake = $('optShake') as HTMLInputElement;
     const nums = $('optNumbers') as HTMLInputElement;
@@ -172,10 +174,12 @@ export class Screens {
     nums.checked = initial.damageNumbers;
     hints.checked = initial.hints;
     const emit = () => onChange({
+      musicStyle: score.value === 'classic' ? 'classic' : 'epic',
       volume: +vol.value / 100, music: +music.value / 100, shake: shake.checked, damageNumbers: nums.checked, hints: hints.checked,
     });
     vol.addEventListener('input', emit);
     music.addEventListener('input', emit);
+    score.addEventListener('change', emit);
     hints.addEventListener('change', emit);
     shake.addEventListener('change', emit);
     nums.addEventListener('change', emit);

@@ -25,6 +25,9 @@ export function bindControls(g: Game): void {
         else if (b === 'start') g.setPaused(true);
         else if (b === 'back') g.quickToggle = !g.quickToggle;
         break;
+      case 'intro':
+        g.skipIntro();
+        break;
       case 'portal':
         if (b === 'a') g.sector.answerPortal(true);
         else if (b === 'b') g.sector.answerPortal(false);
@@ -56,6 +59,7 @@ export function bindControls(g: Game): void {
   };
 
   const onTouch = (a: TouchAction) => {
+    if (g.state === 'intro') { g.skipIntro(); return; }
     if (g.state !== 'play') return;
     if (a === 'dash') dash();
     else if (a === 'skill') g.player.trySkill(g);
@@ -68,6 +72,7 @@ export function bindControls(g: Game): void {
   g.input.handlers = {
     onKeyDown: (k, repeat) => {
       if (k === 'm' && !repeat) g.toggleMusic();
+      if (g.state === 'intro' && !repeat && k !== 'm') { g.skipIntro(); return; }
       if (g.state === 'play') {
         if (/^[1-9]$/.test(k)) g.switchWeapon(+k - 1);
         if (k === 'q') cycleWeapon(1);
