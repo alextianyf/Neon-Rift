@@ -27,7 +27,6 @@ export interface RunSummary {
   isNewBest: boolean;
   buffs: string[];
   crystals: number;
-  daily: boolean;
   depth: number;
 }
 
@@ -51,6 +50,44 @@ export interface HangarActions {
 export interface StatLine {
   label: string;
   value: string;
+}
+
+export interface WeaponEntry {
+  name: string;
+  level: number;
+  color: number;
+  active: boolean;
+  starter: boolean;
+  desc: string;
+  lv3: string;
+  lv5: string;
+  numbers: string;
+}
+
+export interface EffectEntry {
+  name: string;
+  desc: string;
+  cls: string;     // rarity, or 'abyss'
+  tag: string;
+  count: number;
+}
+
+// One weapon / one effect as shown in the pause screen, the hotbar hover tip and the Tab quick view.
+export function weaponCard(w: WeaponEntry): string {
+  const lv = (n: 3 | 5, text: string) => `<div class="wlv${w.level >= n ? ' on' : ''}">Lv.${n}${w.level >= n ? ' ✓' : ''}：${text}</div>`;
+  const tags = [w.active ? t('使用中') : '', w.starter ? t('初始武器 · 弹药无限') : ''].filter(Boolean).join(' · ');
+  return `<div class="wentry${w.active ? ' on' : ''}" style="--wc:#${w.color.toString(16).padStart(6, '0')}">` +
+    `<div class="ehead"><b>${w.name}</b><span class="lvl">Lv.${w.level}</span>${tags ? `<span class="dim">${tags}</span>` : ''}</div>` +
+    `<div class="edesc">${w.desc}</div>${lv(3, w.lv3)}${lv(5, w.lv5)}<div class="enum">${w.numbers}</div></div>`;
+}
+
+export function effectCard(e: EffectEntry): string {
+  return `<div class="eentry ${e.cls}"><div class="ehead"><b>${e.name}</b>${e.count > 1 ? `<span class="lvl">×${e.count}</span>` : ''}` +
+    `<span class="dim">${e.tag}</span></div><div class="edesc">${e.desc}</div></div>`;
+}
+
+export function effectList(effects: EffectEntry[]): string {
+  return effects.length ? effects.map(effectCard).join('') : `<div class="dim">${t('尚未安装模块')}</div>`;
 }
 
 export interface BuildEntry {
@@ -104,17 +141,25 @@ export class Screens {
     this.setCrosshair(false);
   }
 
-  showPause(stats: StatLine[], build: BuildEntry[]): void {
+  showPause(stats: StatLine[], weapons: WeaponEntry[], effects: EffectEntry[]): void {
     $('statList').innerHTML = stats.map(s => `<div class="statrow"><span>${s.label}</span><b>${s.value}</b></div>`).join('');
-    $('buildList').innerHTML = build.length
-      ? build.map(b => `<div class="buildrow ${b.rarity}" title="${b.desc}"><span>${b.name}</span>${b.count > 1 ? `<b>×${b.count}</b>` : ''}</div>`).join('')
-      : `<div class="dim">${t('尚未安装模块')}</div>`;
+    $('weaponList').innerHTML = weapons.map(weaponCard).join('');
+    $('buildList').innerHTML = effectList(effects);
     this.toggle('pauseScreen', true);
     this.setCrosshair(false);
   }
 
-  // Wire the settings controls; `onChange` receives the updated settings.
-  bindSettings(initial: Settings, onChange: (s: Settings) => void): void {
+  // Music on/off buttons (HUD top-right and title screen).
+  showMusic(on: boolean): void {
+    for (const id of ['musicBtn', 'musicBtnTitle']) {
+      const b = $(id);
+      b.textContent = on ? t('♪ 音乐：开') : t('♪ 音乐：关');
+      b.classList.toggle('off', !on);
+    }
+  }
+
+  // Wire the settings controls; `onChange` receives the values of these controls (other settings untouched).
+  bindSettings(initial: Settings, onChange: (s: Pick<Settings, 'volume' | 'music' | 'shake' | 'damageNumbers' | 'hints'>) => void): void {
     const vol = $('optVolume') as HTMLInputElement;
     const shake = $('optShake') as HTMLInputElement;
     const nums = $('optNumbers') as HTMLInputElement;
@@ -126,7 +171,6 @@ export class Screens {
     nums.checked = initial.damageNumbers;
     hints.checked = initial.hints;
     const emit = () => onChange({
-      ...initial,
       volume: +vol.value / 100, music: +music.value / 100, shake: shake.checked, damageNumbers: nums.checked, hints: hints.checked,
     });
     vol.addEventListener('input', emit);
@@ -136,12 +180,9 @@ export class Screens {
     nums.addEventListener('change', emit);
   }
 
-  showTitleInfo(crystals: number, mechName: string, dailyBest: number | null, today: string): void {
+  showTitleInfo(crystals: number, mechName: string): void {
     $('titleCrystals').textContent = String(crystals);
     $('titleMech').textContent = mechName;
-    $('titleDaily').textContent = dailyBest !== null
-      ? t('今日挑战（{d}）最佳：{b}', { d: today, b: dailyBest })
-      : t('今日挑战（{d}）：尚未挑战', { d: today });
   }
 
   showCodex(profile: Profile, tab: CodexKind | 'history'): void {
@@ -193,7 +234,7 @@ export class Screens {
       const tot = profile.totals;
       count = t('{n} 局', { n: tot.runs });
       const rows = profile.history.map(h =>
-        `<tr class="${h.won ? 'won' : ''}"><td>${h.date}</td><td>${MECHS[h.mech]?.name ?? h.mech}</td><td>${h.daily ? t('每日') : h.depth}</td>` +
+        `<tr class="${h.won ? 'won' : ''}"><td>${h.date}</td><td>${MECHS[h.mech]?.name ?? h.mech}</td><td>${h.depth}</td>` +
         `<td>${h.won ? t('★ 通关') : h.room}</td><td>${h.score}</td><td>${h.kills}</td><td>${fmtTime(h.time)}</td></tr>`).join('');
       const head = [t('日期'), t('机体'), t('深度'), t('扇区'), t('分数'), t('击杀'), t('时长')].map(s => `<th>${t(s)}</th>`).join('');
       html = `<div class="totals"><span>${t('总局数')} <b>${tot.runs}</b></span><span>${t('通关')} <b>${profile.wins}</b></span>` +
@@ -282,7 +323,7 @@ export class Screens {
   }
 
   showGameOver(run: RunSummary): void {
-    const tag = run.daily ? t(' · 每日挑战') : run.depth ? t(' · 深度 {n}', { n: run.depth }) : '';
+    const tag = run.depth ? t(' · 深度 {n}', { n: run.depth }) : '';
     $('deadStats').innerHTML =
       this.statGrid([[t('抵达扇区'), run.room], [t('分数'), run.score], [t('击杀'), run.kills], [t('最高连杀'), run.bestCombo], [t('获得碎片'), run.coins]]) +
       `<div class="crystalgain">${t('+{n} 裂隙结晶', { n: run.crystals })}${tag}</div>` +

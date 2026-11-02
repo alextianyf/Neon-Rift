@@ -89,12 +89,6 @@ export function abyssOnDeath(e: Enemy, g: Game): void {
   }
 }
 
-// Pause screen: the active mutations.
-export function abyssLines(): { label: string; value: string }[] {
-  if (!abyss.mutations.length) return [];
-  return [{ label: t('深渊异变'), value: abyss.mutations.map(m => MUTATIONS[m].name).join(' · ') }];
-}
-
 // ---------------------------------------------------------------------------------------------
 // Abyss laws (sector 150+): one rule per 5-sector stretch, then the next one (they don't stack).
 
@@ -201,8 +195,4 @@ export function lawTick(g: Game, dt: number): void {
       for (const e of [...g.enemies.list]) if (!e.def.boss && Math.hypot(e.pos.x - f.x, e.pos.z - f.z) < 2) g.enemies.damage(e, e.maxHp * 0.05, { dot: true });
     }
   }
-}
-
-export function lawLines(): { label: string; value: string }[] {
-  return lawState.law ? [{ label: t('深渊法则'), value: LAWS[lawState.law].name }] : [];
 }

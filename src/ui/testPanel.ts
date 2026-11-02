@@ -45,7 +45,7 @@ export function buildTestPanel(g: Game): void {
 
   el('tpGo').onclick = () => {
     const n = num('tpSector', 1);
-    if (!inRun()) g.start(false);
+    if (!inRun()) g.start();
     if (g.state === 'paused') g.setPaused(false);
     g.endless = n > FINAL_SECTOR;
     g.sector.enter(n, el<HTMLSelectElement>('tpRoom').value as RoomKind);

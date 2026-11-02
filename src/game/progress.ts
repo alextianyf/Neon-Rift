@@ -1,10 +1,9 @@
-import { todayKey } from '../core/rng';
 import { HISTORY_LIMIT } from '../data/codex';
 import { MAX_DEPTH } from '../data/depth';
 import { loadProfile, saveProfile, type CodexKind, type Profile, type RunRecord } from '../ui/profile';
 import { loadBest, saveBest } from '../ui/storage';
 
-// The persistent side of play: codex discoveries, run history, daily and all-time bests, depth unlocks.
+// The persistent side of play: codex discoveries, run history, all-time bests, depth unlocks.
 export class Progress {
   readonly profile: Profile = loadProfile();
 
@@ -36,12 +35,6 @@ export class Progress {
       pr.history.unshift(rec);
       pr.history.length = Math.min(pr.history.length, HISTORY_LIMIT);
     }
-  }
-
-  recordDaily(score: number): void {
-    const today = todayKey();
-    const prev = this.profile.daily?.date === today ? this.profile.daily.best : 0;
-    this.profile.daily = { date: today, best: Math.max(prev, score) };
   }
 
   // Returns true when this is a new all-time best.

@@ -2,7 +2,6 @@ import { sfx } from '../core/audio';
 import { duck } from '../core/music';
 import { t } from '../core/i18n';
 import type { PadButton } from '../core/input';
-import { todayKey } from '../core/rng';
 import { DEPTH_DESC } from '../data/depth';
 import { MECHS, TALENTS, type MechId, type TalentId } from '../data/meta';
 import { talentLevel, type CodexKind } from '../ui/profile';
@@ -19,9 +18,8 @@ export class Menus {
 
   constructor(private readonly g: Game) {
     const s = g.screens;
-    s.onClick('startBtn', () => g.start(false));
-    s.onClick('dailyBtn', () => g.start(true));
-    s.onClick('continueBtn', () => { const save = loadRun(); if (save) g.start(save.daily, save); });
+    s.onClick('startBtn', () => g.start());
+    s.onClick('continueBtn', () => { const save = loadRun(); if (save) g.start(save); });
     s.onClick('hangarBtn', () => this.openHangar());
     s.onClick('hangarBack', () => this.closeHangar());
     s.onClick('codexBtn', () => this.openCodex());
@@ -36,9 +34,7 @@ export class Menus {
 
   refreshTitle(): void {
     const pr = this.g.progress.profile;
-    const d = pr.daily;
-    const today = todayKey();
-    this.g.screens.showTitleInfo(pr.crystals, MECHS[pr.selected].name, d && d.date === today ? d.best : null, today);
+    this.g.screens.showTitleInfo(pr.crystals, MECHS[pr.selected].name);
     const save = loadRun();
     this.g.screens.showContinue(save ? t('继续上一局 · 扇区 {n}', { n: String(save.room).padStart(2, '0') }) : null);
     this.g.screens.showDepth(pr.depth, pr.maxDepth, DEPTH_DESC, pr.wins);
@@ -59,7 +55,6 @@ export class Menus {
     else if (b === 'a') click(visible('continueBtn') ? 'continueBtn' : 'startBtn');
     else if (b === 'start') click('startBtn');
     else if (b === 'back') click('codexBtn');
-    else if (b === 'y') click('dailyBtn');
     else if (b === 'x') click('hangarBtn');
     else if (b === 'lb') this.changeDepth(-1);
     else if (b === 'rb') this.changeDepth(1);

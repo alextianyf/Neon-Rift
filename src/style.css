@@ -150,6 +150,14 @@ button.mini:disabled { background: rgba(255, 255, 255, .15); color: rgba(255, 25
 
 /* bottom hotbar: buff row on top; dash / skill keys and the weapon slots below */
 #hotbar { position: absolute; left: 50%; bottom: 16px; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 6px; }
+#hotbar [data-tip] { pointer-events: auto; cursor: none; }
+#hoverTip { position: fixed; z-index: 9; width: 280px; padding: 8px 12px; background: rgba(6, 9, 18, .94); border: 1px solid var(--cyan-dim);
+  clip-path: var(--notch); pointer-events: none; opacity: 0; transition: opacity .12s; text-align: left; }
+#hoverTip.on { opacity: 1; }
+#hoverTip .wentry, #hoverTip .eentry { padding: 0; border: 0; }
+#quickView { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -54%); display: none; gap: 14px; pointer-events: none; }
+#quickView.on { display: flex; }
+#quickView .panel { width: 300px; max-height: 66vh; overflow: hidden; background: rgba(6, 9, 18, .88); }
 #buffbar { display: flex; gap: 10px; align-items: flex-end; min-height: 30px; }
 #statusTiles, #moduleTiles { display: flex; gap: 4px; flex-wrap: wrap; justify-content: center; max-width: 520px; }
 .bt { --bc: #9fb4ff; position: relative; width: 28px; height: 28px; display: grid; place-items: center; font-size: 13px; font-weight: 700; color: #fff;
@@ -270,7 +278,23 @@ button.go:hover { background: rgba(79, 240, 255, .2); }
 .card.legendary { --rc: #ffc83d; background: linear-gradient(180deg, rgba(60, 40, 10, .9), rgba(14, 10, 24, .9)); }
 
 /* pause */
-.pausegrid { display: flex; gap: 16px; flex-wrap: wrap; justify-content: center; margin-bottom: 24px; max-width: 920px; }
+.pausegrid { display: flex; gap: 16px; flex-wrap: wrap; justify-content: center; margin-bottom: 24px; max-width: 1200px; }
+.panel.scroll { width: 300px; max-height: 58vh; overflow-y: auto; }
+.wentry, .eentry { padding: 7px 0 8px; border-bottom: 1px solid rgba(79, 240, 255, .12); font-size: 13px; line-height: 1.5; }
+.wentry:last-child, .eentry:last-child { border-bottom: 0; }
+.ehead { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+.ehead .lvl { font-family: var(--font-num); font-size: 12px; color: #fff; }
+.ehead .dim { font-size: 11px; }
+.edesc { color: #c8d4e6; }
+.wentry .ehead b { color: var(--wc); }
+.wentry.on .ehead b { text-shadow: 0 0 8px var(--wc); }
+.wlv { color: #6f7a8c; font-size: 12px; }
+.wlv.on { color: #9fe8a0; }
+.enum { font-family: var(--font-num); font-size: 11px; color: #8fa0b8; margin-top: 2px; }
+.eentry.common .ehead b { color: #9fb4ff; }
+.eentry.rare .ehead b { color: #c77dff; }
+.eentry.legendary .ehead b { color: #ffc83d; }
+.eentry.abyss .ehead b { color: #ff5a6a; }
 .panel { width: 272px; text-align: left; padding: 14px 16px; background: var(--panel); border: 1px solid var(--cyan-dim); clip-path: var(--notch); }
 .panel h3 { margin: 0 0 10px; font-size: 14px; letter-spacing: 3px; color: var(--cyan); font-weight: 700; }
 .statrow, .buildrow { display: flex; justify-content: space-between; font-size: 14px; line-height: 1.85; }
@@ -376,6 +400,12 @@ canvas { touch-action: none; }
 }
 
 #langBtn { position: absolute; top: 16px; right: 18px; padding: 5px 12px; font-family: var(--font-num); letter-spacing: 2px; }
+/* music on/off: a quiet outlined toggle, not a call to action */
+button.mini.mbtn { padding: 3px 10px; font-size: 12px; font-weight: 500; color: rgba(219, 231, 255, .75); background: transparent; border: 1px solid rgba(79, 240, 255, .35); }
+button.mini.mbtn:hover { color: #fff; border-color: var(--cyan); }
+button.mini.mbtn.off { color: rgba(219, 231, 255, .4); border-color: rgba(255, 255, 255, .15); }
+#musicBtnTitle { position: absolute; left: 18px; bottom: 10px; }
+#musicBtn { pointer-events: auto; margin-top: 6px; }
 #version { position: absolute; right: 18px; bottom: 12px; font-family: var(--font-num); font-size: 11px; letter-spacing: 2px; color: rgba(219, 231, 255, .45); pointer-events: none; }
 
 /* test link panel (?test) */

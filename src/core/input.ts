@@ -47,7 +47,7 @@ export class Input {
   constructor(canvas: HTMLCanvasElement, crosshair: HTMLElement) {
     addEventListener('keydown', e => {
       const k = e.key.toLowerCase();
-      if (k === ' ') e.preventDefault();
+      if (k === ' ' || k === 'tab') e.preventDefault();
       this.keys.add(k);
       this.handlers.onKeyDown?.(k, e.repeat);
     });

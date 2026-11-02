@@ -11,8 +11,6 @@ import type { WeaponSlot } from '../game/player';
 // Resuming rebuilds the sector from scratch with the player as they entered it.
 export interface RunSave {
   v: 1;
-  daily: boolean;
-  dailyDate: string;
   depth: number;
   endless: boolean;
   seed: number;

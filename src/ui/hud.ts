@@ -1,6 +1,6 @@
 import { clamp } from '../core/math';
 import type { SkillId } from '../data/meta';
-import { RARITY_LABEL, type Rarity } from '../data/upgrades';
+import type { Rarity } from '../data/upgrades';
 import { WEAPONS } from '../data/weapons';
 import type { WeaponSlot } from '../game/player';
 import { $ } from './dom';
@@ -12,6 +12,7 @@ import { LANG, t } from '../core/i18n';
 export interface StatusIcon {
   html: string;          // glyph
   color: string;
+  tip: string;           // hover text
   time: number | null;   // seconds left, or null for "while the condition holds"
 }
 
@@ -92,9 +93,39 @@ export class Hud {
   private ammoEls: HTMLElement[] = [];
   private lastCoins = -1;
   private lastStatus = '';
+  private readonly tipEl = $('hoverTip');
+  private readonly quickEl = $('quickView');
+  // Hover text for a hotbar element's `data-tip` key ("weapon:0", "mod:2", "status:1", "dash", "skill").
+  tipSource: ((key: string) => string | null) | null = null;
+
+  constructor() {
+    const bar = $('hotbar');
+    bar.addEventListener('mousemove', e => {
+      const el = (e.target as Element).closest<HTMLElement>('[data-tip]');
+      const html = el && this.tipSource?.(el.dataset.tip!);
+      if (!el || !html) { this.hideTip(); return; }
+      this.tipEl.innerHTML = html;
+      this.tipEl.classList.add('on');
+      const r = el.getBoundingClientRect(), w = this.tipEl.offsetWidth;
+      this.tipEl.style.left = `${clamp(r.left + r.width / 2 - w / 2, 8, innerWidth - w - 8)}px`;
+      this.tipEl.style.bottom = `${innerHeight - r.top + 8}px`;
+    });
+    bar.addEventListener('mouseleave', () => this.hideTip());
+  }
+
+  hideTip(): void {
+    this.tipEl.classList.remove('on');
+  }
+
+  // Held Tab: weapons and effects over the running game.
+  quickView(html: string | null): void {
+    this.quickEl.classList.toggle('on', html !== null);
+    if (html !== null) this.quickEl.innerHTML = html;
+  }
 
   show(visible: boolean): void {
     this.root.classList.toggle('hidden', !visible);
+    if (!visible) { this.hideTip(); this.quickView(null); }
   }
 
   update(s: HudStats): void {
@@ -124,8 +155,8 @@ export class Hud {
       el.classList.toggle('low', slot.mag <= Math.ceil(s.magSize(slot) * 0.25));
       el.classList.toggle('dry', slot.mag === 0 && !slot.starter && slot.reserve === 0);
     });
-    const status = s.statuses.map(st =>
-      `<div class="bt st" style="--bc:${st.color}">${st.html}${st.time !== null ? `<b>${st.time < 10 ? st.time.toFixed(1) : Math.ceil(st.time)}</b>` : ''}</div>`).join('');
+    const status = s.statuses.map((st, i) =>
+      `<div class="bt st" data-tip="status:${i}" style="--bc:${st.color}">${st.html}${st.time !== null ? `<b>${st.time < 10 ? st.time.toFixed(1) : Math.ceil(st.time)}</b>` : ''}</div>`).join('');
     if (status !== this.lastStatus) {
       this.statusTiles.innerHTML = status;
       this.lastStatus = status;
@@ -157,7 +188,7 @@ export class Hud {
       const w = WEAPONS[s.id];
       const stars = s.level > 1 ? `<span class="lv">Lv.${s.level}</span>` : '';
       html.push(
-        `<div class="slot ${i === active ? 'on' : ''}${s.starter ? ' starter' : ''}" style="--wc:${hex(w.color)}">` +
+        `<div class="slot ${i === active ? 'on' : ''}${s.starter ? ' starter' : ''}" data-tip="weapon:${i}" style="--wc:${hex(w.color)}">` +
         `<kbd>${i + 1}</kbd>${weaponIcon(s.id)}<span class="wname">${w.name}</span>${stars}` +
         `<span class="ammo"></span></div>`,
       );
@@ -174,9 +205,9 @@ export class Hud {
 
   // Installed modules as small tiles in the buff row: rarity colour, short label, stack count.
   setModules(mods: ModuleIcon[]): void {
-    this.moduleTiles.innerHTML = mods.map(m => {
+    this.moduleTiles.innerHTML = mods.map((m, i) => {
       const label = LANG === 'en' ? m.name.replace(/[^A-Za-z]/g, '').slice(0, 2) : [...m.name][0];
-      return `<div class="bt mod ${m.rarity}" data-name="${m.name} · ${RARITY_LABEL[m.rarity]}">${label}${m.count > 1 ? `<b>${m.count}</b>` : ''}</div>`;
+      return `<div class="bt mod ${m.rarity}" data-tip="mod:${i}">${label}${m.count > 1 ? `<b>${m.count}</b>` : ''}</div>`;
     }).join('');
   }
 

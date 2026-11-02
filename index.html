@@ -26,6 +26,7 @@
     <div class="hrow"><span class="lbl">SCORE</span><b id="score" class="num">0</b></div>
     <div class="hrow"><span class="lbl">SHARDS</span><b id="coins" class="num gold">0</b></div>
     <div class="hrow dim"><span class="lbl">BEST</span><span id="best">-</span></div>
+    <button id="musicBtn" class="mini mbtn" title="M">♪</button>
   </div>
   <div id="bossBar" class="hidden">
     <div class="name"><span class="warn">⚠</span><span id="bossName"></span><span class="lbl">// THREAT</span></div>
@@ -38,11 +39,13 @@
   <div id="hotbar">
     <div id="buffbar"><div id="statusTiles"></div><div id="moduleTiles"></div></div>
     <div class="hotrow">
-      <div class="hk" id="hkDash"><span class="ico"></span><kbd>空格</kbd><span class="hname">冲刺</span><i class="sweep"></i><b class="cdn"></b></div>
-      <div class="hk skill" id="hkSkill"><span class="ico"></span><kbd>F</kbd><span class="hname"></span><i class="sweep"></i><b class="cdn"></b></div>
+      <div class="hk" id="hkDash" data-tip="dash"><span class="ico"></span><kbd>空格</kbd><span class="hname">冲刺</span><i class="sweep"></i><b class="cdn"></b></div>
+      <div class="hk skill" id="hkSkill" data-tip="skill"><span class="ico"></span><kbd>F</kbd><span class="hname"></span><i class="sweep"></i><b class="cdn"></b></div>
       <div id="weapons"></div>
     </div>
   </div>
+  <div id="hoverTip"></div>
+  <div id="quickView"></div>
   <div id="toast"></div>
   <div id="hint"><span class="lbl">TIP</span><span id="hintText"></span></div>
 </div>
@@ -59,6 +62,7 @@
 
 <div id="titleScreen" class="overlay">
   <button id="langBtn" class="mini">EN</button>
+  <button id="musicBtnTitle" class="mini mbtn" title="M">♪</button>
   <div id="version" class="version"></div>
   <div class="kicker">DIMENSIONAL BREACH DETECTED</div>
   <h1 class="glitch" data-text="NEON RIFT">NEON RIFT</h1>
@@ -71,7 +75,9 @@
     <kbd>R</kbd><span>装弹（初始武器弹药无限）</span>
     <kbd>E</kbd><span>拾取武装 / 终端交易</span>
     <kbd>F</kbd><span>机体技能（各机体不同）</span>
-    <kbd>Esc / P</kbd><span>暂停（机体数据与设置）</span>
+    <kbd>Esc / P</kbd><span>暂停（查看武装、模块效果、机体数据与设置）</span>
+    <kbd>M</kbd><span>音乐开关</span>
+    <kbd>Tab（按住）</kbd><span>不暂停，速查武装和模块效果；鼠标指向底部的武装、模块、状态图标也能看说明</span>
     <kbd>手柄</kbd><span>左摇杆移动 · 右摇杆瞄准 · RT 射击 · A 冲刺 · B 装弹 · X 交互 · Y 技能 · LB/RB 换武装</span>
   </div>
   <div class="tips">共 15 个扇区，每 5 个扇区一个裂隙核心 · 击败第 15 扇区的裂隙主宰即通关 · 重复拾取同一武装会升级</div>
@@ -84,12 +90,10 @@
   <div class="titlebar">
     <span>机体：<b id="titleMech">先锋</b></span>
     <span>裂隙结晶：<b id="titleCrystals" class="gold">0</b></span>
-    <span id="titleDaily" class="dim"></span>
   </div>
   <div class="titlebtns">
     <button class="go hidden" id="continueBtn">继续上一局</button>
     <button class="go" id="startBtn">启动机体</button>
-    <button class="go alt" id="dailyBtn">每日挑战</button>
     <button class="go alt" id="hangarBtn">机库</button>
     <button class="go alt" id="codexBtn">图鉴</button>
   </div>
@@ -118,7 +122,8 @@
   <h2>已暂停</h2>
   <div class="pausegrid">
     <div class="panel"><h3>机体数据</h3><div id="statList"></div></div>
-    <div class="panel"><h3>已安装模块</h3><div id="buildList"></div></div>
+    <div class="panel scroll"><h3>武装</h3><div id="weaponList"></div></div>
+    <div class="panel scroll"><h3>模块与效果</h3><div id="buildList"></div></div>
     <div class="panel">
       <h3>设置</h3>
       <label class="opt">音量 <input type="range" id="optVolume" min="0" max="100"></label>

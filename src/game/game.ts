@@ -4,7 +4,7 @@ import { Graphics } from '../core/graphics';
 import { t } from '../core/i18n';
 import { Input } from '../core/input';
 import { duck, setMood, setMusicVolume } from '../core/music';
-import { seedFromString, seedRun, todayKey } from '../core/rng';
+import { seedRun, todayKey } from '../core/rng';
 import { BALANCE } from '../data/balance';
 import { DEPTH_CRYSTAL_BONUS, DEPTH_DESC, FINAL_SECTOR, MODS, VICTORY_CRYSTALS, setDepth } from '../data/depth';
 import { TEST, TEST_SECTOR } from '../core/testMode';
@@ -17,7 +17,8 @@ import { MAX_WEAPON_SLOTS, WEAPONS } from '../data/weapons';
 import { Floaters } from '../ui/floaters';
 import { Hud } from '../ui/hud';
 import type { CodexKind } from '../ui/profile';
-import { buildEntries, statLines, statusIcons } from '../ui/runStats';
+import { buildEntries, effectEntries, keyTip, statLines, statusIcons, weaponEntries } from '../ui/runStats';
+import { effectCard, effectList, weaponCard } from '../ui/screens';
 import { clearRun, saveRun, type RunSave } from '../ui/runsave';
 import { Screens } from '../ui/screens';
 import { loadSettings, saveSettings, type Settings } from '../ui/settings';
@@ -28,7 +29,7 @@ import { Lasers } from './lasers';
 import { Portals } from './portals';
 import { X } from './partsEndless';
 import { enemyTimeScale } from './abyss';
-import { abyss, abyssLines, ambientDarkness, lawDark, lawDmgMul, lawLines, lawState, lawTick, rewardMul } from './abyss';
+import { abyss, ambientDarkness, lawDark, lawDmgMul, lawState, lawTick, rewardMul } from './abyss';
 import { currentFusions, resetFusions } from './fusion';
 import { applyBoon, type BoonId } from './epoch';
 import { AFFIXES } from '../data/affixes';
@@ -68,8 +69,9 @@ export class Game {
   bestCombo = 0;
   bossKills = 0;
   runTime = 0;                   // seconds played this run
-  daily = false;
   depth = 0;                     // rift depth of the current run
+  quickToggle = false;           // gamepad Back toggles the quick view (Tab is held instead)
+  private quickOpen = false;
   endless = false;               // kept going after clearing the final sector
   god = false;                   // test link: the player takes no damage
   bossLog: BossLogEntry[] = [];  // bosses fought this run, for picking random and twin bosses
@@ -110,7 +112,7 @@ export class Game {
 
   constructor() {
     bindControls(this);
-    this.screens.onClick('restartBtn', () => this.start(this.daily));
+    this.screens.onClick('restartBtn', () => this.start());
     this.screens.onClick('portalGo', () => this.sector.answerPortal(true));
     this.screens.onClick('portalStay', () => this.sector.answerPortal(false));
     this.screens.onClick('menuBtn', () => this.toTitle());
@@ -120,13 +122,15 @@ export class Game {
     this.screens.onClick('quitBtn', () => { duck(false); this.toTitle(); });
     this.screens.bindSettings(this.settings, s => {
       if (s.hints && !this.settings.hints) this.tutorial.reset();
-      this.applySettings(s);
+      this.applySettings({ ...this.settings, ...s });
     });
     this.applySettings(this.settings);
+    this.hud.tipSource = key => this.hotbarTip(key);
+    for (const id of ['musicBtn', 'musicBtnTitle']) this.screens.onClick(id, () => this.toggleMusic());
     // browsers only start audio after a gesture: the first click or key on the title starts the menu music
     const wake = () => {
       initAudio();
-      setMusicVolume(this.settings.music * this.settings.volume);
+      setMusicVolume(this.musicLevel());
       if (this.state === 'title') setMood('menu');
       removeEventListener('pointerdown', wake);
       removeEventListener('keydown', wake);
@@ -154,6 +158,7 @@ export class Game {
         this.room.updatePortal(dt, this.time);
         this.atmosphere.update(dt, this.time, this.player.pos);
       }
+      this.updateQuickView();
       this.gfx.updateCamera(dt, this.player.pos, this.player.aim, this.fx.shakeAmt);
       this.fx.decayShake(dt);
       this.floaters.update(frozen ? 0 : dt);
@@ -163,11 +168,10 @@ export class Game {
   }
 
   // New run, or resume `save` from the start of the sector it was taken in.
-  start(daily: boolean, save?: RunSave): void {
+  start(save?: RunSave): void {
     initAudio();
     const profile = this.progress.profile;
-    this.daily = daily;
-    this.depth = save ? save.depth : daily ? 0 : profile.depth;
+    this.depth = save ? save.depth : profile.depth;
     this.endless = save?.endless ?? false;
     this.crystalsAwarded = save?.crystalsAwarded ?? 0;
     setDepth(this.depth);
@@ -214,8 +218,8 @@ export class Game {
       this.sector.enter(save.room, save.kind);
       this.hud.toast(t('继续 · 扇区 {n}', { n: String(save.room).padStart(2, '0') }));
     } else {
-      seedRun(daily ? seedFromString(`neon-rift:${todayKey()}`) : undefined);
-      const first = TEST && !daily ? TEST_SECTOR : 1;  // test link can start deeper (`&sector=N`)
+      seedRun();
+      const first = TEST ? TEST_SECTOR : 1;  // test link can start deeper (`&sector=N`)
       this.endless = first > FINAL_SECTOR;
       this.sector.enter(first, 'combat');
     }
@@ -226,7 +230,7 @@ export class Game {
   saveRunState(seed: number, room: number, kind: RoomKind): void {
     const p = this.player;
     saveRun({
-      v: 1, daily: this.daily, dailyDate: todayKey(), depth: this.depth, endless: this.endless, seed, room, kind,
+      v: 1, depth: this.depth, endless: this.endless, seed, room, kind,
       score: this.score, kills: this.kills, coinsEarned: this.coinsEarned, bestCombo: this.bestCombo,
       bossKills: this.bossKills, crystalsAwarded: this.crystalsAwarded, playTime: this.runTime,
       mech: p.mechDef.id, hp: p.hp, coins: p.coins, revives: p.revives,
@@ -255,7 +259,7 @@ export class Game {
     this.input.mouseDown = false;
     this.input.releaseTouch();
     duck(paused);
-    if (paused) this.screens.showPause([...statLines(this.player), ...abyssLines(), ...lawLines()], buildEntries(this.player));
+    if (paused) this.screens.showPause(statLines(this.player), weaponEntries(this.player), effectEntries(this.player, this.boons));
     else this.screens.toggle('pauseScreen', false);
     this.screens.setCrosshair(!paused);
   }
@@ -350,8 +354,7 @@ export class Game {
     pr.profile.crystals += VICTORY_CRYSTALS;
     pr.profile.wins++;
     this.recordRun(true);
-    const unlocked = this.daily ? null : pr.unlockAfterWin(this.depth);
-    if (this.daily) pr.recordDaily(this.score);
+    const unlocked = pr.unlockAfterWin(this.depth);
     pr.save();
     pr.recordBest(this.room.n, this.score);
     sfx.levelUp();
@@ -471,11 +474,10 @@ export class Game {
     const crystals = this.runCrystals();  // shown as the run's total; only the part not banked yet is paid now
     this.bankCrystals();
     this.recordRun(false);
-    if (this.daily) pr.recordDaily(this.score);
     pr.save();
     const summary = {
       room: this.room.n, score: this.score, kills: this.kills, coins: this.coinsEarned,
-      bestCombo: this.bestCombo, isNewBest, buffs: this.player.buffs, crystals, daily: this.daily, depth: this.depth,
+      bestCombo: this.bestCombo, isNewBest, buffs: this.player.buffs, crystals, depth: this.depth,
     };
     setTimeout(() => this.screens.showGameOver(summary), 900);
   }
@@ -533,7 +535,7 @@ export class Game {
 
   private recordRun(won: boolean): void {
     this.progress.recordRun({
-      id: this.runId, date: todayKey(), mech: this.player.mechDef.id, depth: this.depth, daily: this.daily,
+      id: this.runId, date: todayKey(), mech: this.player.mechDef.id, depth: this.depth,
       won, room: this.room.n, score: this.score, kills: this.kills, time: Math.round(this.runTime),
     });
   }
@@ -545,11 +547,42 @@ export class Game {
     this.sector.openUpgrade();
   }
 
+  // Hover text for the hotbar (weapon slots, module and status tiles, dash and skill keys).
+  private hotbarTip(key: string): string | null {
+    const p = this.player, [kind, n] = key.split(':'), i = Number(n);
+    if (kind === 'dash' || kind === 'skill') return keyTip(p, kind);
+    if (kind === 'weapon') { const w = weaponEntries(p)[i]; return w ? weaponCard(w) : null; }
+    if (kind === 'mod') { const e = effectEntries(p, [])[i]; return e ? effectCard(e) : null; }
+    if (kind === 'status') return statusIcons(p)[i]?.tip ?? null;
+    return null;
+  }
+
+  // Held Tab (or the gamepad's Back button, toggled): weapons and effects without pausing.
+  private updateQuickView(): void {
+    const want = this.state === 'play' && (this.input.keys.has('tab') || this.quickToggle);
+    if (want === this.quickOpen) return;
+    this.quickOpen = want;
+    this.hud.quickView(want
+      ? `<div class="panel"><h3>${t('武装')}</h3>${weaponEntries(this.player).map(weaponCard).join('')}</div>` +
+        `<div class="panel"><h3>${t('模块与效果')}</h3>${effectList(effectEntries(this.player, this.boons))}</div>`
+      : null);
+  }
+
+  private musicLevel(): number {
+    const s = this.settings;
+    return s.musicOn ? s.music * s.volume : 0;
+  }
+
+  toggleMusic(): void {
+    this.applySettings({ ...this.settings, musicOn: !this.settings.musicOn });
+  }
+
   private applySettings(s: Settings): void {
     this.settings = s;
     saveSettings(s);
     setVolume(s.volume);
-    setMusicVolume(s.music * s.volume);
+    setMusicVolume(this.musicLevel());
+    this.screens.showMusic(s.musicOn);
     this.fx.shakeScale = s.shake ? 1 : 0;
     this.floaters.enabled = s.damageNumbers;
     this.tutorial.enabled = s.hints;

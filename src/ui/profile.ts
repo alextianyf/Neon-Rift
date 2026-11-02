@@ -2,13 +2,12 @@ import { TEST, storageKey } from '../core/testMode';
 import { MAX_DEPTH } from '../data/depth';
 import type { MechId, TalentId } from '../data/meta';
 
-// Persistent player profile (localStorage): crystals, unlocks, talents and daily bests.
+// Persistent player profile (localStorage): crystals, unlocks, talents, run history.
 export interface Profile {
   crystals: number;
   mechs: MechId[];
   selected: MechId;
   talents: Partial<Record<TalentId, number>>;
-  daily: { date: string; best: number } | null;
   depth: number;      // selected rift depth
   maxDepth: number;   // highest unlocked depth
   wins: number;
@@ -26,7 +25,6 @@ export interface RunRecord {
   date: string;
   mech: MechId;
   depth: number;
-  daily: boolean;
   won: boolean;
   room: number;
   score: number;
@@ -35,7 +33,7 @@ export interface RunRecord {
 }
 
 const KEY = storageKey('neonrift.profile');
-const DEFAULT: Profile = { crystals: TEST ? 99999 : 0, mechs: TEST ? ['vanguard', 'bastion', 'phantom'] : ['vanguard'], selected: 'vanguard', talents: {}, daily: null, depth: 0, maxDepth: TEST ? MAX_DEPTH : 0, wins: 0, seen: [], codex: { enemies: [], weapons: [], upgrades: [] }, history: [], totals: { runs: 0, kills: 0, time: 0 } };
+const DEFAULT: Profile = { crystals: TEST ? 99999 : 0, mechs: TEST ? ['vanguard', 'bastion', 'phantom'] : ['vanguard'], selected: 'vanguard', talents: {}, depth: 0, maxDepth: TEST ? MAX_DEPTH : 0, wins: 0, seen: [], codex: { enemies: [], weapons: [], upgrades: [] }, history: [], totals: { runs: 0, kills: 0, time: 0 } };
 
 export function loadProfile(): Profile {
   try {

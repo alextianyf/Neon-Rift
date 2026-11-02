@@ -23,6 +23,7 @@ export function bindControls(g: Game): void {
         else if (b === 'rb') cycleWeapon(1);
         else if (b === 'lb') cycleWeapon(-1);
         else if (b === 'start') g.setPaused(true);
+        else if (b === 'back') g.quickToggle = !g.quickToggle;
         break;
       case 'portal':
         if (b === 'a') g.sector.answerPortal(true);
@@ -66,6 +67,7 @@ export function bindControls(g: Game): void {
 
   g.input.handlers = {
     onKeyDown: (k, repeat) => {
+      if (k === 'm' && !repeat) g.toggleMusic();
       if (g.state === 'play') {
         if (/^[1-9]$/.test(k)) g.switchWeapon(+k - 1);
         if (k === 'q') cycleWeapon(1);

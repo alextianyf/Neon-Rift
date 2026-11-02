@@ -1,5 +1,5 @@
 // Run-level randomness. Level generation (rooms, waves, hazards, paths, loot) draws from here
-// so a daily challenge can be replayed from the same seed; visual effects and enemy AI keep
+// so a run save can rebuild a sector from the same seed; visual effects and enemy AI keep
 // using Math.random.
 
 let state = (Math.random() * 2 ** 32) >>> 0;
@@ -36,8 +36,3 @@ export function todayKey(): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
-export function seedFromString(s: string): number {
-  let h = 2166136261;
-  for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 16777619);
-  return h >>> 0;
-}
