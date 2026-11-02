@@ -61,42 +61,85 @@
 <div id="rotateHint">横屏体验更好</div>
 
 <div id="titleScreen" class="overlay">
+  <div id="titleFade"></div>
+  <div class="lbox top"></div>
+  <div class="lbox bottom"></div>
   <button id="langBtn" class="mini">EN</button>
+  <div class="tleft">
+    <div class="kicker">DIMENSIONAL BREACH DETECTED</div>
+    <h1 class="glitch" data-text="NEON RIFT">NEON RIFT</h1>
+    <div class="sub">霓虹裂隙 · 驾驶机甲，深入裂隙，清除病毒体</div>
+    <nav class="tmenu">
+      <button class="tbtn primary hidden" id="continueBtn">继续上一局</button>
+      <button class="tbtn primary" id="startBtn">启动机体</button>
+      <button class="tbtn" id="hangarBtn">机库</button>
+      <button class="tbtn" id="codexBtn">图鉴</button>
+      <button class="tbtn" id="controlsBtn">操作说明</button>
+    </nav>
+    <div class="depthsel">
+      <span class="dl">裂隙深度</span>
+      <button class="mini" id="depthDown">◀</button>
+      <b id="depthN">0</b>
+      <button class="mini" id="depthUp">▶</button>
+      <div id="depthDesc" class="dim"></div>
+    </div>
+  </div>
+  <div class="tcardbox">
+    <div class="lbl">ACTIVE FRAME</div>
+    <div class="trow"><span>当前机体</span><b id="titleMech">堡垒</b></div>
+    <div class="trow"><span>裂隙结晶</span><b id="titleCrystals" class="gold">0</b></div>
+    <div class="tgoal">共 15 个扇区，每 5 个扇区一个首领 · 打过第 15 扇区即通关，之后可继续无尽模式</div>
+  </div>
   <button id="musicBtnTitle" class="mini mbtn" title="M">♪</button>
   <div id="version" class="version"></div>
-  <div class="kicker">DIMENSIONAL BREACH DETECTED</div>
-  <h1 class="glitch" data-text="NEON RIFT">NEON RIFT</h1>
-  <div class="sub">霓虹裂隙 · 驾驶机甲，深入裂隙，清除病毒体</div>
-  <div class="controls">
-    <kbd>WASD</kbd><span>移动</span>
-    <kbd>鼠标</kbd><span>瞄准 / 左键射击</span>
-    <kbd>空格 / 右键</kbd><span>推进冲刺（无敌帧）</span>
-    <kbd>1 2 3 / Q / 滚轮</kbd><span>切换武装</span>
-    <kbd>R</kbd><span>装弹（初始武器弹药无限）</span>
-    <kbd>E</kbd><span>拾取武装 / 终端交易</span>
-    <kbd>F</kbd><span>机体技能（各机体不同）</span>
-    <kbd>Esc / P</kbd><span>暂停（查看武装、模块效果、机体数据与设置）</span>
-    <kbd>M</kbd><span>音乐开关</span>
-    <kbd>Tab（按住）</kbd><span>不暂停，速查武装和模块效果；鼠标指向底部的武装、模块、状态图标也能看说明</span>
-    <kbd>手柄</kbd><span>左摇杆移动 · 右摇杆瞄准 · RT 射击 · A 冲刺 · B 装弹 · X 交互 · Y 技能 · LB/RB 换武装</span>
+</div>
+
+<div id="controlsScreen" class="overlay hidden">
+  <div class="kicker">CONTROLS</div>
+  <h2>操作说明</h2>
+  <div class="ctrlgrid">
+    <div class="panel">
+      <h3>键盘鼠标</h3>
+      <div class="controls">
+        <kbd>WASD</kbd><span>移动</span>
+        <kbd>鼠标</kbd><span>瞄准 / 左键射击</span>
+        <kbd>空格 / 右键</kbd><span>推进冲刺（无敌帧）</span>
+        <kbd>1 2 3 / Q / 滚轮</kbd><span>切换武装</span>
+        <kbd>R</kbd><span>装弹（初始武器弹药无限）</span>
+        <kbd>E</kbd><span>拾取武装 / 终端交易</span>
+        <kbd>F</kbd><span>机体技能（各机体不同）</span>
+        <kbd>Tab（按住）</kbd><span>速查武装和模块效果（不暂停）</span>
+        <kbd>Esc / P</kbd><span>暂停（查看武装、模块效果、机体数据与设置）</span>
+        <kbd>M</kbd><span>音乐开关</span>
+      </div>
+    </div>
+    <div class="panel">
+      <h3>手柄</h3>
+      <div class="controls">
+        <kbd>左摇杆</kbd><span>移动</span>
+        <kbd>右摇杆</kbd><span>瞄准</span>
+        <kbd>RT</kbd><span>射击</span>
+        <kbd>A / LT</kbd><span>冲刺</span>
+        <kbd>B</kbd><span>装弹</span>
+        <kbd>X</kbd><span>拾取 / 交易</span>
+        <kbd>Y</kbd><span>机体技能</span>
+        <kbd>LB / RB</kbd><span>切换武装</span>
+        <kbd>Back</kbd><span>速查武装和模块效果</span>
+        <kbd>Start</kbd><span>暂停</span>
+      </div>
+    </div>
+    <div class="panel">
+      <h3>触屏</h3>
+      <div class="controls">
+        <kbd>左半屏</kbd><span>拖动移动</span>
+        <kbd>右半屏</kbd><span>拖动瞄准并自动射击</span>
+        <kbd>右下按钮</kbd><span>冲刺、技能、拾取、换枪、换弹</span>
+        <kbd>顶部</kbd><span>暂停</span>
+      </div>
+      <div class="dim ctrltip">鼠标指向底部的武装、模块、状态图标可以看说明 · 重复拾取同一武装会升级</div>
+    </div>
   </div>
-  <div class="tips">共 15 个扇区，每 5 个扇区一个裂隙核心 · 击败第 15 扇区的裂隙主宰即通关 · 重复拾取同一武装会升级</div>
-  <div class="depthsel">
-    <button class="mini" id="depthDown">◀</button>
-    <span class="dl">裂隙深度 <b id="depthN">0</b></span>
-    <button class="mini" id="depthUp">▶</button>
-    <div id="depthDesc" class="dim"></div>
-  </div>
-  <div class="titlebar">
-    <span>机体：<b id="titleMech">堡垒</b></span>
-    <span>裂隙结晶：<b id="titleCrystals" class="gold">0</b></span>
-  </div>
-  <div class="titlebtns">
-    <button class="go hidden" id="continueBtn">继续上一局</button>
-    <button class="go" id="startBtn">启动机体</button>
-    <button class="go alt" id="hangarBtn">机库</button>
-    <button class="go alt" id="codexBtn">图鉴</button>
-  </div>
+  <button class="go" id="controlsBack">返回</button>
 </div>
 
 <div id="portalScreen" class="overlay dialog hidden">

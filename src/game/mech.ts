@@ -1,14 +1,25 @@
 import * as THREE from 'three';
+import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 import { glowMat } from '../core/assets';
 import { clamp } from '../core/math';
 import { MECHS, type MechPalette } from '../data/meta';
 
-const FRAME = new THREE.MeshStandardMaterial({ color: 0x252a35, metalness: 0.6, roughness: 0.45, emissive: 0x080b12, emissiveIntensity: 0.5, flatShading: true });
+const FRAME_FLAT = new THREE.MeshStandardMaterial({ color: 0x252a35, metalness: 0.6, roughness: 0.45, emissive: 0x080b12, emissiveIntensity: 0.5, flatShading: true });
+// Close-up variant (title screen): rounded, smooth-shaded, more metallic, so it reads from up close.
+const FRAME_FINE = new THREE.MeshStandardMaterial({ color: 0x23272f, metalness: 0.85, roughness: 0.32 });
 const SHADOW = new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.55, depthWrite: false });
 
 // Two-tone armor with lighter top plates so the silhouette reads from above; the accent lights
 // mark the player. Each mech type has its own palette.
-function paletteMaterials(p: MechPalette) {
+function paletteMaterials(p: MechPalette, fine: boolean) {
+  if (fine) {
+    return {
+      ARMOR: new THREE.MeshStandardMaterial({ color: p.armor, metalness: 0.55, roughness: 0.46 }),
+      ARMOR_TOP: new THREE.MeshStandardMaterial({ color: p.armorTop, metalness: 0.45, roughness: 0.42 }),
+      PAINT: new THREE.MeshStandardMaterial({ color: p.paint, metalness: 0.35, roughness: 0.35, emissive: new THREE.Color(p.paint).multiplyScalar(0.08) }),
+      CYAN: p.accent,
+    };
+  }
   return {
     ARMOR: new THREE.MeshStandardMaterial({ color: p.armor, metalness: 0.35, roughness: 0.5, emissive: 0x141c2a, emissiveIntensity: 0.5, flatShading: true }),
     ARMOR_TOP: new THREE.MeshStandardMaterial({ color: p.armorTop, metalness: 0.25, roughness: 0.55, emissive: 0x1b2433, emissiveIntensity: 0.5, flatShading: true }),
@@ -17,13 +28,17 @@ function paletteMaterials(p: MechPalette) {
   };
 }
 
+// Set while a close-up mech is being built: box() and plate() round their edges.
+let fineBuild = false;
+
 // Cannon muzzle in unscaled model space (right arm; the left arm mirrors x).
 const MUZZLE = new THREE.Vector3(0.62, 1.12, 1.14);
 
 type Pt = [number, number];
 
 function box(w: number, h: number, d: number, mat: THREE.Material, x = 0, y = 0, z = 0): THREE.Mesh {
-  const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
+  const geo = fineBuild ? new RoundedBoxGeometry(w, h, d, 3, Math.min(w, h, d) * 0.22) : new THREE.BoxGeometry(w, h, d);
+  const m = new THREE.Mesh(geo, mat);
   m.position.set(x, y, z);
   return m;
 }
@@ -32,7 +47,8 @@ function box(w: number, h: number, d: number, mat: THREE.Material, x = 0, y = 0,
 // Gives angular armor plates whose silhouette reads from the overhead camera.
 function plate(outline: Pt[], height: number, mat: THREE.Material, y: number, bevel = 0.025): THREE.Mesh {
   const shape = new THREE.Shape(outline.map(([x, z]) => new THREE.Vector2(x, -z)));
-  const geo = new THREE.ExtrudeGeometry(shape, { depth: height, bevelEnabled: bevel > 0, bevelSize: bevel, bevelThickness: bevel, bevelSegments: 1 });
+  const b = fineBuild ? Math.max(bevel, Math.min(0.035, height * 0.3)) : bevel;
+  const geo = new THREE.ExtrudeGeometry(shape, { depth: height, bevelEnabled: b > 0, bevelSize: b, bevelThickness: b, bevelSegments: fineBuild ? 3 : 1 });
   geo.rotateX(-Math.PI / 2);
   const m = new THREE.Mesh(geo, mat);
   m.position.y = y;
@@ -77,9 +93,12 @@ export class MechModel {
 
   private readonly scale: number;
 
-  constructor(palette: MechPalette = MECHS.vanguard.palette, scale = MECHS.vanguard.scale) {
+  // `fine`: the close-up build for the title screen (rounded parts, smooth metal, extra mechanical detail).
+  constructor(palette: MechPalette = MECHS.vanguard.palette, scale = MECHS.vanguard.scale, fine = false) {
     this.scale = scale;
-    const { ARMOR, ARMOR_TOP, PAINT, CYAN } = paletteMaterials(palette);
+    fineBuild = fine;
+    const FRAME = fine ? FRAME_FINE : FRAME_FLAT;
+    const { ARMOR, ARMOR_TOP, PAINT, CYAN } = paletteMaterials(palette, fine);
     const cyan = glowMat(CYAN, 1.6);
 
     const shadow = new THREE.Mesh(new THREE.CircleGeometry(1.0, 24), SHADOW);
@@ -136,7 +155,7 @@ export class MechModel {
     for (const side of [1, -1]) {
       const group = new THREE.Group();
       group.position.x = side * MUZZLE.x;
-      const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.08, 0.6, 10), FRAME);
+      const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.08, 0.6, fine ? 24 : 10), FRAME);
       barrel.rotation.x = Math.PI / 2;
       barrel.position.set(0, 1.12, 0.82);
       const ring = new THREE.Mesh(new THREE.TorusGeometry(0.085, 0.025, 6, 14), glowMat(0xffffff, 2));
@@ -171,8 +190,47 @@ export class MechModel {
     // yaw first, then the run-lean pitch in the body's own frame (default XYZ would tilt around world X)
     this.upper.rotation.order = 'YXZ';
     this.root.add(this.lower, this.upper);
+    if (fine) this.addDetail(FRAME, PAINT, cyan);
+    fineBuild = false;
     // drawn larger than the 0.55 hitbox so the silhouette reads from the top-down camera
     this.root.scale.setScalar(scale);
+  }
+
+  // Mechanical detail that only shows up close: hydraulic pistons and joints on the legs, panel seams
+  // on the chest, cooling fins on the reactor pack, running lights on the shoulders.
+  private addDetail(frame: THREE.Material, paint: THREE.Material, glow: THREE.Material): void {
+    const steel = new THREE.MeshStandardMaterial({ color: 0x9aa3b0, metalness: 0.95, roughness: 0.18 });
+    const seam = new THREE.MeshStandardMaterial({ color: 0x0b0d12, metalness: 0.4, roughness: 0.7 });
+    const cyl = (r: number, len: number, mat: THREE.Material, seg = 20) => new THREE.Mesh(new THREE.CylinderGeometry(r, r, len, seg), mat);
+    for (const leg of this.legs) {
+      const hipJoint = cyl(0.13, 0.34, frame);
+      hipJoint.rotation.z = Math.PI / 2;
+      const kneeJoint = cyl(0.11, 0.36, frame);
+      kneeJoint.rotation.z = Math.PI / 2;
+      kneeJoint.position.y = 0.02;
+      // piston behind the thigh: housing from the hip, polished rod into the knee
+      const housing = cyl(0.045, 0.24, frame);
+      housing.position.set(0, -0.12, -0.19);
+      const rod = cyl(0.025, 0.24, steel);
+      rod.position.set(0, -0.32, -0.19);
+      leg.hip.add(hipJoint, housing, rod);
+      const ankle = cyl(0.08, 0.26, frame);
+      ankle.rotation.z = Math.PI / 2;
+      ankle.position.y = -0.44;
+      const shinRod = cyl(0.022, 0.3, steel);
+      shinRod.position.set(0, -0.26, -0.21);
+      leg.knee.add(kneeJoint, ankle, shinRod);
+    }
+    // chest seams and a stencilled stripe
+    for (const x of [-0.24, 0.24]) this.upper.add(box(0.012, 0.3, 0.02, seam, x, 1.3, 0.4));
+    this.upper.add(box(0.5, 0.012, 0.02, seam, 0, 1.2, 0.395), box(0.14, 0.05, 0.02, paint, 0.3, 1.42, 0.37));
+    // reactor fins and shoulder running lights
+    for (let i = 0; i < 5; i++) this.upper.add(box(0.56, 0.02, 0.06, frame, 0, 1.16 + i * 0.07, -0.57));
+    for (const side of [-1, 1]) {
+      const lamp = new THREE.Mesh(new THREE.SphereGeometry(0.03, 12, 8), glow);
+      lamp.position.set(side * 0.82, 1.62, 0.22);
+      this.upper.add(lamp);
+    }
   }
 
   setWeaponColor(hex: number): void {
@@ -188,6 +246,11 @@ export class MechModel {
     const x = (side === 0 ? MUZZLE.x : -MUZZLE.x) * S, z = MUZZLE.z * S;
     const c = Math.cos(yaw), s = Math.sin(yaw);
     return out.set(pos.x + x * c + z * s, MUZZLE.y * S, pos.z - x * s + z * c);
+  }
+
+  // Attach an extra part to the upper body (model space, before scaling), so it turns with the torso.
+  mount(obj: THREE.Object3D): void {
+    this.upper.add(obj);
   }
 
   kick(side: 0 | 1): void {

@@ -89,13 +89,51 @@ canvas { display: block; cursor: none; }
 #hpFill { background: linear-gradient(90deg, #ff3366, #ff9a5c); box-shadow: 0 0 10px #ff3366; }
 
 /* title & hangar */
-.titlebar { display: flex; gap: 22px; justify-content: center; flex-wrap: wrap; font-size: 14px; margin-bottom: 16px; }
-.titlebar b { color: #fff; }
 .titlebtns { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
-.depthsel { display: flex; gap: 12px; align-items: center; justify-content: center; flex-wrap: wrap; margin: -4px 0 18px; font-size: 15px; }
-.depthsel .dl { letter-spacing: 3px; min-width: 120px; text-align: center; }
-.depthsel .dl b { font-family: var(--font-num); color: var(--pink); font-size: 20px; margin-left: 4px; }
-.depthsel button.mini { padding: 4px 12px; }
+
+/* title screen: menu on the left over a dark gradient, the hangar animation fills the right */
+#titleScreen { align-items: flex-start; justify-content: center; text-align: left; padding: 0 0 0 max(28px, 6vw); backdrop-filter: none;
+  background: linear-gradient(90deg, rgba(3, 5, 10, .9) 0%, rgba(3, 5, 10, .72) 28%, rgba(3, 5, 10, 0) 52%),
+    linear-gradient(0deg, rgba(3, 5, 10, .7) 0%, rgba(3, 5, 10, 0) 26%); }
+#titleFade { position: absolute; inset: 0; background: #03050a; opacity: 0; pointer-events: none; }
+/* anamorphic letterbox bars */
+#titleScreen .lbox { position: absolute; left: 0; right: 0; height: 8vh; background: #000; pointer-events: none; }
+#titleScreen .lbox.top { top: 0; box-shadow: 0 6px 18px rgba(0, 0, 0, .7); }
+#titleScreen .lbox.bottom { bottom: 0; box-shadow: 0 -6px 18px rgba(0, 0, 0, .7); }
+.tleft { position: relative; width: min(540px, 100%); }
+#titleScreen h1 { font-size: clamp(44px, 5vw, 68px); letter-spacing: 9px; margin-bottom: 4px; white-space: nowrap; }
+#titleScreen .sub { font-size: 15px; margin-bottom: 30px; }
+.tmenu { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; margin-bottom: 28px; }
+.tbtn { position: relative; font-family: var(--font-num); font-size: 17px; font-weight: 600; letter-spacing: 5px; color: rgba(219, 231, 255, .78);
+  background: transparent; border: 0; border-left: 2px solid transparent; padding: 9px 18px 9px 22px; cursor: pointer; text-align: left;
+  transition: color .15s, padding .15s, border-color .15s, background .15s; }
+.tbtn::before { content: "▸"; position: absolute; left: 6px; opacity: 0; color: var(--cyan); transition: opacity .15s; }
+.tbtn:hover, .tbtn:focus-visible { color: #fff; padding-left: 30px; border-left-color: var(--cyan); outline: none;
+  background: linear-gradient(90deg, rgba(79, 240, 255, .18), rgba(79, 240, 255, 0)); text-shadow: 0 0 10px var(--cyan); }
+.tbtn:hover::before, .tbtn:focus-visible::before { opacity: 1; }
+.tbtn.primary { font-size: 22px; color: #fff; text-shadow: 0 0 10px rgba(79, 240, 255, .7); }
+#continueBtn:not(.hidden) ~ #startBtn { font-size: 17px; color: rgba(219, 231, 255, .78); text-shadow: none; }
+.depthsel { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; font-size: 14px; }
+.depthsel .dl { letter-spacing: 3px; color: var(--cyan); font-family: var(--font-num); font-size: 11px; }
+.depthsel > b { font-family: var(--font-num); color: var(--pink); font-size: 20px; min-width: 18px; text-align: center; }
+.depthsel button.mini { padding: 3px 10px; background: transparent; color: var(--cyan); border: 1px solid var(--cyan-dim); }
+.depthsel button.mini:disabled { color: rgba(255, 255, 255, .25); border-color: rgba(255, 255, 255, .1); background: transparent; }
+.depthsel .dim { flex-basis: 100%; }
+.tcardbox { position: absolute; right: max(24px, 4vw); bottom: 9vh; width: 300px; padding: 14px 18px; text-align: left; background: rgba(6, 10, 20, .72);
+  border: 1px solid var(--cyan-dim); border-top: 2px solid var(--cyan); clip-path: var(--notch); }
+.tcardbox .trow { display: flex; justify-content: space-between; align-items: baseline; margin-top: 6px; font-size: 14px; }
+.tcardbox .trow b { font-family: var(--font-num); font-size: 17px; color: var(--rc, #fff); }
+.tgoal { margin-top: 10px; font-size: 12px; opacity: .55; line-height: 1.5; }
+.ctrlgrid { display: flex; gap: 14px; flex-wrap: wrap; justify-content: center; margin-bottom: 20px; max-width: 1100px; }
+.ctrlgrid .panel { width: 330px; }
+.ctrlgrid .controls { font-size: 14px; margin-bottom: 0; }
+.ctrltip { margin-top: 12px; font-size: 12px; }
+@media (max-width: 900px) {
+  #titleScreen { align-items: center; text-align: center; padding: 18px 12px; background: rgba(3, 5, 10, .72); }
+  .tmenu { align-items: center; }
+  .depthsel { justify-content: center; }
+  .tcardbox { position: static; margin-top: 16px; }
+}
 #depthDesc { flex-basis: 100%; text-align: center; font-size: 13px; }
 button.go.alt { border-color: rgba(255, 255, 255, .35); background: rgba(255, 255, 255, .04); text-shadow: none; font-size: 14px; padding: 13px 28px; }
 button.go.alt:hover { border-color: var(--cyan); }
@@ -412,7 +450,6 @@ canvas { touch-action: none; }
   .overlay h1 { font-size: 38px; letter-spacing: 5px; }
   .overlay h2 { font-size: 22px; margin-bottom: 10px; }
   .overlay .sub { font-size: 13px; margin-bottom: 12px; }
-  #titleScreen .controls, #titleScreen .tips { display: none; }
   button.go { font-size: 13px; padding: 10px 18px; letter-spacing: 3px; }
   button.go.alt { font-size: 12px; padding: 10px 16px; }
   .hpanel { transform: scale(.78); }

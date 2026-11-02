@@ -28,6 +28,7 @@ import { Ground } from './ground';
 import { Lasers } from './lasers';
 import { Portals } from './portals';
 import { Clones } from './clones';
+import { TitleScene } from './titleScene';
 import { X } from './partsEndless';
 import { enemyTimeScale } from './abyss';
 import { abyss, ambientDarkness, lawDark, lawDmgMul, lawState, lawTick, rewardMul } from './abyss';
@@ -101,6 +102,7 @@ export class Game {
   readonly lasers = new Lasers(this);
   readonly portals = new Portals(this);
   readonly clones = new Clones(this);
+  private readonly titleScene = new TitleScene(this);
   slippery = false;              // the whole floor is ice (abyss law)
   darkness = 0;                  // 0..1 how dark the arena is around the player (light eaters, the eye, laws)
   ambientDark = 0;               // darkness that doesn't come from light eaters (eye boss, abyss rules)
@@ -152,7 +154,7 @@ export class Game {
       if (this.state === 'play') this.update(dt);
       else if (this.state === 'title') {
         this.time += dt;
-        this.player.mesh.rotation.y = this.time * 0.6;
+        this.titleScene.update(dt);
       }
       const frozen = this.state === 'paused' || this.state === 'upgrade' || this.state === 'portal' || this.state === 'hangar';
       if (!frozen) {
@@ -161,7 +163,7 @@ export class Game {
         this.atmosphere.update(dt, this.time, this.player.pos);
       }
       this.updateQuickView();
-      this.gfx.updateCamera(dt, this.player.pos, this.player.aim, this.fx.shakeAmt);
+      if (this.state !== 'title') this.gfx.updateCamera(dt, this.player.pos, this.player.aim, this.fx.shakeAmt);  // the title scene runs its own camera
       this.fx.decayShake(dt);
       this.floaters.update(frozen ? 0 : dt);
       this.gfx.render(dt);
@@ -172,6 +174,7 @@ export class Game {
   // New run, or resume `save` from the start of the sector it was taken in.
   start(save?: RunSave): void {
     initAudio();
+    this.titleScene.show(false);
     const profile = this.progress.profile;
     this.depth = save ? save.depth : profile.depth;
     this.endless = save?.endless ?? false;
@@ -604,17 +607,19 @@ export class Game {
     this.hud.prompt(null);
     this.clearWorld();
     this.buildBackdrop();
-    this.player.mesh.visible = true;
     this.menus.refreshTitle();
     this.screens.toggle('titleScreen', true);
   }
 
-  // Sector 1 with the selected mech spinning in the middle, behind the title screen.
+  // Behind the title screen: the hangar scene (titleScene.ts). Sector 1 is built too, out of view,
+  // so the arena is ready when a run starts.
   private buildBackdrop(): void {
     this.room.build(1, 'combat');
     this.atmosphere.build(this.room);
     this.player.setMech(MECHS[this.progress.profile.selected]);
     this.player.pos.set(0, 0, 3);
     this.player.mesh.position.copy(this.player.pos);
+    this.player.mesh.visible = false;
+    this.titleScene.show(true);
   }
 }

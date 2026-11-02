@@ -1,5 +1,5 @@
 import { BALANCE } from '../data/balance';
-import { MECHS, TALENTS, type MechId, type TalentId } from '../data/meta';
+import { MECHS, TALENTS, type MechDef, type MechId, type TalentId } from '../data/meta';
 import { ENEMY_NOTES } from '../data/codex';
 import { AFFIXES, type AffixId } from '../data/affixes';
 import { VARIANTS } from '../data/variants';
@@ -13,8 +13,8 @@ import { $ } from './dom';
 import type { Settings } from './settings';
 import { joinList, t } from '../core/i18n';
 
-export type OverlayId = 'titleScreen' | 'upgradeScreen' | 'pauseScreen' | 'deadScreen' | 'hangarScreen' | 'winScreen' | 'codexScreen' | 'portalScreen';
-const OVERLAYS: OverlayId[] = ['titleScreen', 'upgradeScreen', 'pauseScreen', 'deadScreen', 'hangarScreen', 'winScreen', 'codexScreen', 'portalScreen'];
+export type OverlayId = 'titleScreen' | 'upgradeScreen' | 'pauseScreen' | 'deadScreen' | 'hangarScreen' | 'winScreen' | 'codexScreen' | 'portalScreen' | 'controlsScreen';
+const OVERLAYS: OverlayId[] = ['titleScreen', 'upgradeScreen', 'pauseScreen', 'deadScreen', 'hangarScreen', 'winScreen', 'codexScreen', 'portalScreen', 'controlsScreen'];
 const hex = (c: number) => `#${c.toString(16).padStart(6, '0')}`;
 const fmtTime = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 
@@ -180,9 +180,10 @@ export class Screens {
     nums.addEventListener('change', emit);
   }
 
-  showTitleInfo(crystals: number, mechName: string): void {
+  showTitleInfo(crystals: number, mech: MechDef): void {
     $('titleCrystals').textContent = String(crystals);
-    $('titleMech').textContent = mechName;
+    $('titleMech').textContent = mech.name;
+    $('titleMech').style.setProperty('--rc', `#${RARITY_COLOR[mech.rarity].toString(16).padStart(6, '0')}`);
   }
 
   showCodex(profile: Profile, tab: CodexKind | 'history'): void {

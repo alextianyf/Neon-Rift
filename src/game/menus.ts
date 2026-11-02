@@ -24,6 +24,8 @@ export class Menus {
     s.onClick('hangarBack', () => this.closeHangar());
     s.onClick('codexBtn', () => this.openCodex());
     s.onClick('codexBack', () => this.closeCodex());
+    s.onClick('controlsBtn', () => { s.toggle('titleScreen', false); s.toggle('controlsScreen', true); });
+    s.onClick('controlsBack', () => { s.toggle('controlsScreen', false); s.toggle('titleScreen', true); });
     s.onClick('depthDown', () => this.changeDepth(-1));
     s.onClick('depthUp', () => this.changeDepth(1));
     for (const el of document.querySelectorAll<HTMLElement>('#codexTabs [data-tab]')) {
@@ -34,7 +36,7 @@ export class Menus {
 
   refreshTitle(): void {
     const pr = this.g.progress.profile;
-    this.g.screens.showTitleInfo(pr.crystals, MECHS[pr.selected].name);
+    this.g.screens.showTitleInfo(pr.crystals, MECHS[pr.selected]);
     const save = loadRun();
     this.g.screens.showContinue(save ? t('继续上一局 · 扇区 {n}', { n: String(save.room).padStart(2, '0') }) : null);
     this.g.screens.showDepth(pr.depth, pr.maxDepth, DEPTH_DESC, pr.wins);
@@ -45,6 +47,7 @@ export class Menus {
     const click = (id: string) => (document.getElementById(id) as HTMLButtonElement | null)?.click();
     const visible = (id: string) => !document.getElementById(id)?.classList.contains('hidden');
     if (visible('hangarScreen')) { if (b === 'b') click('hangarBack'); }
+    else if (visible('controlsScreen')) { if (b === 'b' || b === 'a') click('controlsBack'); }
     else if (visible('codexScreen')) {
       if (b === 'b') click('codexBack');
       else if (b === 'lb' || b === 'rb') {
@@ -56,6 +59,7 @@ export class Menus {
     else if (b === 'start') click('startBtn');
     else if (b === 'back') click('codexBtn');
     else if (b === 'x') click('hangarBtn');
+    else if (b === 'y') click('controlsBtn');
     else if (b === 'lb') this.changeDepth(-1);
     else if (b === 'rb') this.changeDepth(1);
   }
