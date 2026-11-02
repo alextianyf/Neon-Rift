@@ -95,6 +95,22 @@ canvas { display: block; cursor: none; }
 #titleScreen { align-items: flex-start; justify-content: center; text-align: left; padding: 0 0 0 max(28px, 6vw); backdrop-filter: none;
   background: linear-gradient(90deg, rgba(3, 5, 10, .9) 0%, rgba(3, 5, 10, .72) 28%, rgba(3, 5, 10, 0) 52%),
     linear-gradient(0deg, rgba(3, 5, 10, .7) 0%, rgba(3, 5, 10, 0) 26%); }
+/* singularity's orbital strike: a banner while it charges, a white flash when it lands */
+#orbitalBanner { position: fixed; left: 0; right: 0; top: 18%; z-index: 5; text-align: center; pointer-events: none; opacity: 0; }
+#orbitalBanner b { display: block; font-family: var(--font-num); font-size: clamp(28px, 4.4vw, 58px); font-weight: 800; letter-spacing: 14px; color: #fff4dc;
+  text-shadow: 0 0 18px #ffd27a, 0 0 42px rgba(255, 160, 40, .8); }
+#orbitalBanner span { display: block; margin-top: 6px; font-size: 15px; letter-spacing: 6px; color: #ffd27a; }
+#orbitalBanner.on { animation: orbBanner 1.5s ease-out forwards; }
+@keyframes orbBanner {
+  0% { opacity: 0; transform: scale(1.6); letter-spacing: 40px; filter: blur(6px); }
+  12% { opacity: 1; transform: scale(1); filter: blur(0); }
+  18%, 26% { opacity: .55; } 22%, 30% { opacity: 1; }
+  70% { opacity: 1; transform: scale(1); }
+  100% { opacity: 0; transform: scale(.96); }
+}
+#orbitalFlash { position: fixed; inset: 0; z-index: 4; pointer-events: none; opacity: 0; background: radial-gradient(circle, #fff 0%, #ffe4a8 45%, rgba(255, 190, 90, .6) 100%); mix-blend-mode: screen; }
+#orbitalFlash.on { animation: orbFlash .45s ease-out forwards; }
+@keyframes orbFlash { 0% { opacity: .5; } 100% { opacity: 0; } }
 #titleFade { position: absolute; inset: 0; background: #03050a; opacity: 0; pointer-events: none; }
 /* anamorphic letterbox bars */
 #titleScreen .lbox { position: absolute; left: 0; right: 0; height: 8vh; background: #000; pointer-events: none; }

@@ -12,6 +12,7 @@ import type { Game } from './game';
 import { MechModel } from './mech';
 import { DEFAULT_MECH, MECHS, type MechDef, type TalentId } from '../data/meta';
 import { CLONES } from './clones';
+import { BARRIER, BarrierFx } from './barrier';
 import { t } from '../core/i18n';
 
 const P = BALANCE.player;
@@ -25,6 +26,7 @@ const moveDir = new THREE.Vector3();
 // Legendary skill "轨道湮灭" (orbital strike).
 const ORBITAL = { warn: 1, seconds: 6, invuln: 1, shove: 11, stagger: 0.4 };  // shove: ~2.2 units back with the reduced grip
 const GHOST_LIFE = 0.35;
+const tipPos = new THREE.Vector3();
 const ndc = new THREE.Vector3();
 function onScreen(pos: THREE.Vector3, g: Game): boolean {
   ndc.set(pos.x, 0.5, pos.z).project(g.gfx.camera);
@@ -61,6 +63,7 @@ export class Player {
   readonly r = P.radius;
   private readonly ring: THREE.Mesh<THREE.RingGeometry, THREE.MeshBasicMaterial>;
   private readonly shieldBubble: THREE.Mesh<THREE.SphereGeometry, THREE.MeshBasicMaterial>;
+  private readonly barrier = new BarrierFx();
   private mech = new MechModel();
   mechDef: MechDef = MECHS[DEFAULT_MECH];
   skillCd = 0;
@@ -159,7 +162,7 @@ export class Player {
     }));
     this.shieldBubble.position.y = 1.2;
     this.shieldBubble.scale.setScalar(1.6);
-    this.mesh.add(this.mech.root, this.ring, this.shieldBubble);
+    this.mesh.add(this.mech.root, this.ring, this.shieldBubble, this.barrier.group);
     scene.add(this.mesh);
     this.reset();
   }
@@ -239,10 +242,12 @@ export class Player {
       sfx.levelUp();
       g.hud.toast(t('过载射击'));
     } else if (def.skill === 'barrier') {
-      this.skillT = this.skillDur = 3;
-      this.invuln = Math.max(this.invuln, 3);
+      this.skillT = this.skillDur = BARRIER.duration;
+      this.invuln = Math.max(this.invuln, BARRIER.duration);
       g.projectiles.clearEnemyBulletsNear(this.pos, 6);
       g.fx.shockwave(this.pos.x, this.pos.z, 6, 0x66ccff);
+      g.fx.burst({ x: this.pos.x, y: 1.2, z: this.pos.z }, 0x66ccff, 24, 6, 0.14, 0.5);
+      g.gfx.flash(this.pos.x, 2, this.pos.z, 0x66ccff, 40);
       sfx.shieldBlock();
     } else if (def.skill === 'clones') {
       this.skillT = this.skillDur = CLONES.duration;
@@ -251,6 +256,11 @@ export class Player {
       this.skillT = this.skillDur = ORBITAL.warn;
       this.orbitalLock(g);
     }
+  }
+
+  // Bastion's barrier is up: no damage of any kind, enemy shots stop at the dome.
+  get barrierUp(): boolean {
+    return this.mechDef.skill === 'barrier' && this.skillT > 0;
   }
 
   get overdrive(): boolean {
@@ -293,28 +303,23 @@ export class Player {
     this.strikeT = ORBITAL.warn;
     this.mech.skillPose(true);
     this.strikes = g.enemies.list.filter(e => e.hp > 0 && !e.def.inert && !untargetable(e) && onScreen(e.pos, g));
-    for (const e of this.strikes) g.fx.shockwave(e.pos.x, e.pos.z, e.r + 1.2, this.mechDef.palette.accent);
+    g.orbital.lock(this.strikes);
     sfx.lock(Math.min(6, this.strikes.length));
-    g.hud.toast(t('轨道湮灭：锁定 {n} 个目标', { n: this.strikes.length }));
   }
 
   // Step 2: a beam from orbit on every locked enemy still alive, worth ORBITAL.seconds of the
   // current weapon's output (bosses still go through their damage guard), and the field is wiped clean.
   private orbitalStrike(g: Game): void {
-    const dmg = this.weaponDps * ORBITAL.seconds, color = this.mechDef.palette.accent;
+    const dmg = this.weaponDps * ORBITAL.seconds;
+    const hits: THREE.Vector3[] = [];
     for (const e of this.strikes) {
       if (e.hp <= 0) continue;
-      g.fx.lightning({ x: e.pos.x, y: 18, z: e.pos.z }, { x: e.pos.x, y: 0.3, z: e.pos.z }, color);
-      g.fx.shockwave(e.pos.x, e.pos.z, 2.4, color);
+      hits.push(e.pos.clone());
       g.enemies.damage(e, dmg, { dir: new THREE.Vector3(0, 0, 0), knock: 0 });
     }
     this.strikes = [];
-    // the shoulder cannon fires its beam into the sky as the strikes land
-    const tip = this.mech.shoulderTip(new THREE.Vector3());
-    if (tip) {
-      g.fx.lightning(tip, { x: tip.x, y: tip.y + 22, z: tip.z }, color);
-      g.fx.burst(tip, color, 18, 5, 0.18, 0.5);
-    }
+    // the shoulder cannon fires into the sky as the pillars land (orbitalFx.ts draws it all)
+    g.orbital.fire(this.mech.shoulderTip(new THREE.Vector3()), hits);
     this.mech.skillPose(false);
     g.projectiles.clearEnemyBulletsNear(this.pos, 999);
     this.invuln = Math.max(this.invuln, ORBITAL.invuln);
@@ -550,6 +555,7 @@ export class Player {
     this.skillCd -= dt;
     this.skillT -= dt;
     this.recoilT -= dt;
+    g.orbital.update(dt, this.mech.shoulderTip(tipPos));
     this.updateGhosts(dt, g);
     if (this.strikeT > 0 && (this.strikeT -= dt) <= 0) this.orbitalStrike(g);
     this.dryToastT -= dt;
@@ -588,10 +594,11 @@ export class Player {
     this.faceYaw = g.input.stickAim ? Math.atan2(this.aim.x, this.aim.z) : this.screenFacing(g);
     this.mech.update(dt, this.vel, this.faceYaw, this.moveSpeed, this.dashT > 0);
     // blink while invulnerable after taking a hit
-    this.mesh.visible = !(this.invuln > 0 && this.dashT <= 0 && Math.floor(g.time * 20) % 2 === 0);
+    this.mesh.visible = !(this.invuln > 0 && this.dashT <= 0 && !this.barrierUp && Math.floor(g.time * 20) % 2 === 0);
     this.ring.material.opacity = this.dashCd <= 0 ? 0.45 : 0.1;
     this.ring.material.color.setHex(this.anchored ? 0xffc83d : 0x4ff0ff);
-    this.shieldBubble.visible = this.shield > 0 || (this.mechDef.skill === 'barrier' && this.skillT > 0);
+    this.shieldBubble.visible = this.shield > 0 && !this.barrierUp;
+    this.barrier.update(dt, this.barrierUp ? this.skillT : 0);
     this.shieldBubble.material.opacity = 0.14 + Math.sin(g.time * 4) * 0.05;
     g.gfx.playerLight.position.set(this.pos.x, 3.5, this.pos.z + 1);
   }

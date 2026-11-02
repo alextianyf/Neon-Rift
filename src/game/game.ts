@@ -28,6 +28,7 @@ import { Ground } from './ground';
 import { Lasers } from './lasers';
 import { Portals } from './portals';
 import { Clones } from './clones';
+import { OrbitalFx } from './orbitalFx';
 import { TitleScene } from './titleScene';
 import { X } from './partsEndless';
 import { enemyTimeScale } from './abyss';
@@ -102,6 +103,7 @@ export class Game {
   readonly lasers = new Lasers(this);
   readonly portals = new Portals(this);
   readonly clones = new Clones(this);
+  readonly orbital = new OrbitalFx(this);
   private readonly titleScene = new TitleScene(this);
   slippery = false;              // the whole floor is ice (abyss law)
   darkness = 0;                  // 0..1 how dark the arena is around the player (light eaters, the eye, laws)
@@ -258,6 +260,7 @@ export class Game {
     this.lasers.clear();
     this.portals.clear();
     this.clones.clear();
+    this.orbital.clear();
   }
 
   setPaused(paused: boolean): void {
@@ -272,7 +275,7 @@ export class Game {
 
   // Continuous damage (acid) that ignores invulnerability frames and doesn't grant any.
   drainPlayer(amount: number): void {
-    if (this.state !== 'play' || this.god) return;
+    if (this.state !== 'play' || this.god || this.player.barrierUp) return;
     this.player.hp -= amount * MODS.enemyDmg * enemyDmgMul(this.room.n);
     if (this.player.hp <= 0) this.onLethal();
   }

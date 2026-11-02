@@ -12,6 +12,7 @@ import { enemyShotSpeedMul, enemyTimeScale, lawBounce, lawRangeMul } from './aby
 // Explosive shells never reach the check: they burst on contact.
 const UNREFLECTED = new Set<WeaponId | undefined>(['rail', 'blade', 'flame', 'singularity', undefined]);
 import type { Game } from './game';
+import { BARRIER } from './barrier';
 
 export interface PlayerBullet {
   mesh: THREE.Mesh;
@@ -483,6 +484,11 @@ export class Projectiles {
       }
       let dead = b.life <= 0 || g.hazards.hitByEnemyShot(pos, b.dmg) || (!b.curve && (g.room.shotBlocked(pos.x, pos.z) || g.enemies.wallAt(pos.x, pos.z)));
       if (!dead && g.clones.active && g.clones.hitAt(pos.x, pos.z, b.r)) dead = true;
+      // bastion's barrier: shots burst against the dome
+      if (!dead && player.barrierUp && Math.hypot(player.pos.x - pos.x, player.pos.z - pos.z) < BARRIER.radius + b.r) {
+        g.fx.burst(pos, 0x66ccff, 5, 4, 0.08, 0.25);
+        dead = true;
+      }
       if (!dead && player.invuln <= 0 && Math.hypot(player.pos.x - pos.x, player.pos.z - pos.z) < b.r + player.r * 0.8) {
         g.damagePlayer(b.dmg, pos);
         dead = true;

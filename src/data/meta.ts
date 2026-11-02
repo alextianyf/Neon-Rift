@@ -45,7 +45,7 @@ export const MECHS: Record<MechId, MechDef> = {
   bastion: {
     id: 'bastion', name: t('堡垒'), desc: t('重装机体：血厚、每扇区自带护盾，但更慢'), cost: 0, rarity: 'common',
     hp: 140, speed: 7.6, dashCdMul: 1.15, dmgMul: 1, critBonus: 0, shield: 1, starter: 'shotgun',
-    skill: 'barrier', skillName: t('电磁屏障'), skillDesc: t('3 秒无敌，并清除周围的敌方子弹'), skillCd: 18,
+    skill: 'barrier', skillName: t('电磁屏障'), skillDesc: t('展开能量屏障，4.5 秒内完全无敌，打到屏障上的子弹都会被挡下'), skillCd: 18,
     palette: { armor: 0x8a8f78, armorTop: 0xa8ad92, paint: 0xffc83d, accent: 0x66ccff }, scale: 1.45,
   },
   vanguard: {
@@ -57,7 +57,7 @@ export const MECHS: Record<MechId, MechDef> = {
   phantom: {
     id: 'phantom', name: t('幻影'), desc: t('轻型机体：快、冲刺冷却短、暴击高，但更脆'), cost: 200, rarity: 'rare',
     hp: 80, speed: 9.8, dashCdMul: 0.8, dmgMul: 1, critBonus: 0.12, shield: 0, starter: 'smg',
-    skill: 'clones', skillName: t('幻影分身'), skillDesc: t('6 秒内左右各出现一个分身，复制你的每一发子弹（50% 伤害），并吸引敌人火力；分身被打 3 下就消失'), skillCd: 15,
+    skill: 'clones', skillName: t('幻影分身'), skillDesc: t('6 秒内左右各出现一个分身，用洋红色子弹复制你的每一发射击（50% 伤害），并吸引敌人火力；分身被打 8 下才会碎'), skillCd: 15,
     palette: { armor: 0x6a6282, armorTop: 0x9188b0, paint: 0xff4dd2, accent: 0xc77dff }, scale: 1.2,
   },
   apex: {

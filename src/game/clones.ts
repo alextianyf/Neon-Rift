@@ -13,8 +13,10 @@ export const CLONES = {
   duration: 6,
   side: 2.2,       // distance to the mech's left and right
   dmg: 0.5,        // of the mech's own shot
-  hits: 3,         // hits a clone takes before it breaks
-  hurtGap: 0.3,    // a clone can't be hit again this soon
+  hits: 8,         // hits a clone takes before it breaks (enough to usually last the whole skill)
+  hurtGap: 0.35,   // a clone can't be hit again this soon
+  warn: 2,         // seconds before the end when the clones start blinking
+  shotColor: 0xff5ce6,  // clone bullets are magenta, whatever the weapon
   lure: 1.5,       // enemies pick a clone over the mech while it's no more than this many times farther
 };
 
@@ -69,19 +71,22 @@ export class Clones {
       c.pos.lerp(tmp, Math.min(1, dt * 10));
       c.model.root.position.copy(c.pos);
       c.model.update(dt, p.vel, p.faceYaw, p.moveSpeed, false);
-      c.model.root.visible = c.hurtT <= 0 || Math.sin(c.hurtT * 60) > 0;  // flicker when hit
+      // flicker when hit; blink faster and faster as the skill runs out
+      const ending = p.skillT < CLONES.warn && Math.sin((CLONES.warn - p.skillT) * (14 + (CLONES.warn - p.skillT) * 20)) > 0.1;  // first blink right away
+      c.model.root.visible = (c.hurtT <= 0 || Math.sin(c.hurtT * 60) > 0) && !ending;
     }
   }
 
   // Each clone fires its own copy of the mech's shot, aimed at the same point.
   fire(w: WeaponDef, shot: ShotStats, count: number, spread: number, aim: THREE.Vector3): void {
     const copy: ShotStats = { ...shot, dmg: shot.dmg * CLONES.dmg, child: true };
+    const look: WeaponDef = { ...w, color: CLONES.shotColor };  // tells the clones' shots from the mech's
     for (const c of this.list) {
       const from = tmp.set(c.pos.x, 1.1 * this.g.player.mechDef.scale, c.pos.z);
       const base = Math.atan2(aim.x - from.x, aim.z - from.z);
       for (let i = 0; i < count; i++) {
         const a = base + (count > 1 ? -spread + 2 * spread * i / (count - 1) : 0);
-        this.g.projectiles.firePlayer(from, a, w.speed, w, copy);
+        this.g.projectiles.firePlayer(from, a, w.speed, look, copy);
       }
     }
   }
